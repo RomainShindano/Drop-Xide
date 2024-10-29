@@ -1,4 +1,5 @@
-# Drop-Xide
+# Drop-Xide<br/>
+![appicon](https://github.com/user-attachments/assets/04784034-b73a-42f2-8792-e64eb7607ec9)
 <br/> 
 **Features Overview**
 <br/> 
