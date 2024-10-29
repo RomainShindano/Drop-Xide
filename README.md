@@ -1,6 +1,6 @@
 # Drop-Xide<br/>
 
-<center> ![appicon](https://github.com/user-attachments/assets/03aedc74-1b28-49c2-a0f1-4c439ec7742b) </center>
+![appicon](https://github.com/user-attachments/assets/03aedc74-1b28-49c2-a0f1-4c439ec7742b) 
 
 <br/> 
 **Features Overview**
