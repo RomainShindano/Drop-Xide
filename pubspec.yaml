@@ -22,7 +22,6 @@ dependencies:
   path_provider: ^2.1.5
   
   # File Operations
-  file_picker: ^8.1.6
   path: ^1.9.1
   
   # YAML Parsing
@@ -51,6 +50,8 @@ dependencies:
   
   # Window Management
   window_manager: ^0.5.2
+  macos_ui: ^2.2.2
+  _discoveryapis_commons: ^1.0.7
 
 dev_dependencies:
   flutter_test:

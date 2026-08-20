@@ -1,68 +1,93 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
+import 'package:macos_ui/macos_ui.dart';
+import 'package:provider/provider.dart';
 import '../providers/project_provider.dart';
 import '../models/flutter_project.dart';
+import 'ui/macos_polish.dart';
+import 'ui/sleek_button.dart';
 
 class ProjectListWidget extends StatelessWidget {
-  const ProjectListWidget({super.key});
+  final VoidCallback? onAddProject;
+  final VoidCallback? onOpenBuild;
+
+  const ProjectListWidget({
+    super.key,
+    this.onAddProject,
+    this.onOpenBuild,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Consumer<ProjectProvider>(
       builder: (context, provider, child) {
         if (provider.isLoading) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: ProgressCircle());
         }
 
         if (provider.error != null) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error, size: 64, color: Colors.red),
-                const SizedBox(height: 16),
-                Text('Error: ${provider.error}'),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => provider.loadProjects(),
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
+          return EmptyState(
+            icon: CupertinoIcons.exclamationmark_circle,
+            title: 'Couldn’t load projects',
+            message: provider.error!,
+            actionLabel: 'Retry',
+            onAction: provider.loadProjects,
           );
         }
 
         if (provider.projects.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.folder_off, size: 100, color: Colors.grey),
-                const SizedBox(height: 20),
-                const Text(
-                  'No Projects',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-                const Text('Click the + button to add your first Flutter project'),
-              ],
-            ),
+          return EmptyState(
+            icon: CupertinoIcons.folder_badge_plus,
+            title: 'No projects yet',
+            message:
+                'Add a Flutter project to start configuring builds and tracking history.',
+            actionLabel: 'Add Project',
+            onAction: onAddProject,
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: provider.projects.length,
-          itemBuilder: (context, index) {
-            final project = provider.projects[index];
-            return _ProjectCard(
-              project: project,
-              isSelected: provider.selectedProject?.id == project.id,
-              onTap: () => provider.selectProject(project),
-              onDelete: () => _confirmDelete(context, provider, project),
-            );
-          },
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+              child: SectionHeader(
+                title: 'Your projects',
+                subtitle:
+                    '${provider.projects.length} project${provider.projects.length == 1 ? '' : 's'}',
+                trailing: provider.selectedProject != null && onOpenBuild != null
+                    ? SleekButton.label(
+                        label: 'Open Build',
+                        onPressed: onOpenBuild,
+                        size: SleekButtonSize.small,
+                      )
+                    : null,
+              ),
+            ),
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                itemCount: provider.projects.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 6),
+                itemBuilder: (context, index) {
+                  final project = provider.projects[index];
+                  return _ProjectRow(
+                    project: project,
+                    isSelected: provider.selectedProject?.id == project.id,
+                    onTap: () => provider.selectProject(project),
+                    onOpen: onOpenBuild == null
+                        ? null
+                        : () {
+                            provider.selectProject(project);
+                            onOpenBuild!();
+                          },
+                    onDelete: () =>
+                        _confirmDelete(context, provider, project),
+                  );
+                },
+              ),
+            ),
+          ],
         );
       },
     );
@@ -73,24 +98,36 @@ class ProjectListWidget extends StatelessWidget {
     ProjectProvider provider,
     FlutterProject project,
   ) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showMacosAlertDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Project'),
-        content: Text('Are you sure you want to remove "${project.name}" from the list?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
+      builder: (_) => MacosAlertDialog(
+        appIcon: const MacosIcon(
+          CupertinoIcons.trash,
+          size: 64,
+          color: MacosColors.systemRedColor,
+        ),
+        title: Text(
+          'Remove Project',
+          style: MacosTheme.of(context).typography.headline,
+        ),
+        message: Text(
+          'Remove “${project.name}” from the list? The project files will not be deleted.',
+          textAlign: TextAlign.center,
+        ),
+        primaryButton: PushButton(
+          controlSize: ControlSize.large,
+          borderRadius: const BorderRadius.all(Radius.circular(10)),
+          color: MacosColors.systemRedColor,
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Remove'),
+        ),
+        secondaryButton: PushButton(
+          controlSize: ControlSize.large,
+          borderRadius: const BorderRadius.all(Radius.circular(10)),
+          secondary: true,
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
       ),
     );
 
@@ -100,149 +137,122 @@ class ProjectListWidget extends StatelessWidget {
   }
 }
 
-class _ProjectCard extends StatelessWidget {
+class _ProjectRow extends StatelessWidget {
   final FlutterProject project;
   final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback? onOpen;
   final VoidCallback onDelete;
 
-  const _ProjectCard({
+  const _ProjectRow({
     required this.project,
     required this.isSelected,
     required this.onTap,
+    required this.onOpen,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
-    return Card(
-      elevation: isSelected ? 4 : 1,
-      color: isSelected ? theme.colorScheme.primaryContainer : null,
-      child: InkWell(
+    final typography = MacosTheme.of(context).typography;
+    final secondary = MacosColors.secondaryLabelColor.resolveFrom(context);
+    final primary = MacosTheme.of(context).primaryColor;
+
+    return SectionCard(
+      padding: EdgeInsets.zero,
+      child: HoverSurface(
+        selected: isSelected,
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.folder,
-                    color: isSelected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.secondary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          project.name,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: isSelected ? theme.colorScheme.primary : null,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          project.path,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.grey,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: onDelete,
-                    color: Colors.red,
-                  ),
-                ],
+        borderRadius: BorderRadius.circular(10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: (isSelected ? primary : MacosColors.systemGrayColor)
+                    .withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(9),
               ),
-              if (project.description != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  project.description!,
-                  style: theme.textTheme.bodyMedium,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+              child: Center(
+                child: MacosIcon(
+                  CupertinoIcons.folder_fill,
+                  size: 16,
+                  color: isSelected ? primary : MacosColors.systemGrayColor,
                 ),
-              ],
-              const SizedBox(height: 12),
-              Row(
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _InfoChip(
-                    icon: Icons.calendar_today,
-                    label: 'Added ${_formatDate(project.addedAt)}',
-                  ),
-                  if (project.lastBuildAt != null) ...[
-                    const SizedBox(width: 8),
-                    _InfoChip(
-                      icon: Icons.build,
-                      label: 'Built ${_formatDate(project.lastBuildAt!)}',
+                  Text(
+                    project.name,
+                    style: typography.headline.copyWith(
+                      color: isSelected ? primary : null,
+                      fontWeight: FontWeight.w600,
                     ),
-                  ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    project.path,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: typography.caption1.copyWith(color: secondary),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _metaLabel(project),
+                    style: typography.caption2.copyWith(color: secondary),
+                  ),
                 ],
               ),
+            ),
+            if (onOpen != null) ...[
+              SleekButton.label(
+                label: 'Build',
+                onPressed: onOpen,
+                secondary: true,
+                size: SleekButtonSize.small,
+                leadingIcon: CupertinoIcons.hammer,
+              ),
+              const SizedBox(width: 6),
             ],
-          ),
+            MacosIconButton(
+              icon: MacosIcon(
+                CupertinoIcons.trash,
+                color: MacosColors.systemRedColor.withValues(alpha: 0.85),
+                size: 15,
+              ),
+              onPressed: onDelete,
+              boxConstraints: const BoxConstraints(
+                minHeight: 28,
+                minWidth: 28,
+                maxHeight: 28,
+                maxWidth: 28,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-
-    if (difference.inDays == 0) {
-      return 'today';
-    } else if (difference.inDays == 1) {
-      return 'yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return DateFormat('MMM d, y').format(date);
+  String _metaLabel(FlutterProject project) {
+    final added = _formatDate(project.addedAt);
+    if (project.lastBuildAt != null) {
+      return 'Added $added · Built ${_formatDate(project.lastBuildAt!)}';
     }
+    return 'Added $added';
   }
-}
 
-class _InfoChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _InfoChip({
-    required this.icon,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12),
-          ),
-        ],
-      ),
-    );
+  String _formatDate(DateTime date) {
+    final difference = DateTime.now().difference(date);
+    if (difference.inDays == 0) return 'today';
+    if (difference.inDays == 1) return 'yesterday';
+    if (difference.inDays < 7) return '${difference.inDays} days ago';
+    return DateFormat('MMM d, y').format(date);
   }
 }

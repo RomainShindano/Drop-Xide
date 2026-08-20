@@ -1,8 +1,11 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:macos_ui/macos_ui.dart';
 import 'package:provider/provider.dart';
 import '../providers/project_provider.dart';
 import '../providers/build_provider.dart';
 import '../models/flutter_project.dart';
+import 'ui/macos_polish.dart';
+import 'ui/sleek_button.dart';
 
 class BuildConfigWidget extends StatefulWidget {
   const BuildConfigWidget({super.key});
@@ -14,263 +17,291 @@ class BuildConfigWidget extends StatefulWidget {
 class _BuildConfigWidgetState extends State<BuildConfigWidget> {
   BuildPlatform _selectedPlatform = BuildPlatform.android;
   BuildMode _selectedMode = BuildMode.release;
+  BuildType _androidBuildType = BuildType.apk;
   String? _flavor;
   bool _obfuscate = false;
   bool _splitDebugInfo = false;
+  final _logScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _logScrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollLogsToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_logScrollController.hasClients) return;
+      _logScrollController.animateTo(
+        _logScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ProjectProvider>(
-      builder: (context, projectProvider, child) {
+    return Consumer2<ProjectProvider, BuildProvider>(
+      builder: (context, projectProvider, buildProvider, child) {
         final selectedProject = projectProvider.selectedProject;
+        final typography = MacosTheme.of(context).typography;
+
+        if (buildProvider.logs.isNotEmpty) {
+          _scrollLogsToEnd();
+        }
 
         if (selectedProject == null) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.build_circle_outlined, size: 100, color: Colors.grey),
-                const SizedBox(height: 20),
-                const Text(
-                  'No Project Selected',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-                const Text('Select a project from the Projects tab to start building'),
-              ],
-            ),
+          return const EmptyState(
+            icon: CupertinoIcons.hammer,
+            title: 'No project selected',
+            message:
+                'Pick a project from the Projects page, then come back here to configure and run a build.',
           );
         }
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(28, 16, 28, 36),
           child: Center(
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 800),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.folder, color: Colors.blue),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      selectedProject.name,
-                                      style: Theme.of(context).textTheme.titleLarge,
-                                    ),
-                                    Text(
-                                      selectedProject.path,
-                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                  SectionCard(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: MacosTheme.of(context)
+                                .primaryColor
+                                .withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Build Configuration',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Platform',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: BuildPlatform.values.map((platform) {
-                              return ChoiceChip(
-                                label: Text(platform.name.toUpperCase()),
-                                selected: _selectedPlatform == platform,
-                                onSelected: (selected) {
-                                  if (selected) {
-                                    setState(() {
-                                      _selectedPlatform = platform;
-                                    });
-                                  }
-                                },
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Build Mode',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: BuildMode.values.map((mode) {
-                              return ChoiceChip(
-                                label: Text(mode.name.toUpperCase()),
-                                selected: _selectedMode == mode,
-                                onSelected: (selected) {
-                                  if (selected) {
-                                    setState(() {
-                                      _selectedMode = mode;
-                                    });
-                                  }
-                                },
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Advanced Options',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            decoration: const InputDecoration(
-                              labelText: 'Flavor (Optional)',
-                              hintText: 'e.g., dev, staging, production',
+                          child: Center(
+                            child: MacosIcon(
+                              CupertinoIcons.folder_fill,
+                              color: MacosTheme.of(context).primaryColor,
                             ),
-                            onChanged: (value) {
-                              _flavor = value.isEmpty ? null : value;
-                            },
                           ),
-                          const SizedBox(height: 12),
-                          SwitchListTile(
-                            title: const Text('Obfuscate'),
-                            subtitle: const Text('Obfuscate Dart code'),
-                            value: _obfuscate,
-                            onChanged: (value) {
-                              setState(() {
-                                _obfuscate = value;
-                              });
-                            },
-                          ),
-                          SwitchListTile(
-                            title: const Text('Split Debug Info'),
-                            subtitle: const Text('Store debug information separately'),
-                            value: _splitDebugInfo,
-                            onChanged: (value) {
-                              setState(() {
-                                _splitDebugInfo = value;
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Consumer<BuildProvider>(
-                    builder: (context, buildProvider, child) {
-                      final isBuilding = buildProvider.currentBuild?.status == BuildStatus.running;
-                      
-                      return FilledButton.icon(
-                        onPressed: isBuilding ? null : () => _startBuild(context),
-                        icon: isBuilding
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.build),
-                        label: Text(isBuilding ? 'Building...' : 'Start Build'),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.all(20),
                         ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Consumer<BuildProvider>(
-                    builder: (context, buildProvider, child) {
-                      if (buildProvider.logs.isEmpty) return const SizedBox.shrink();
-
-                      return Card(
-                        child: Container(
-                          height: 300,
-                          padding: const EdgeInsets.all(16),
+                        const SizedBox(width: 12),
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'Build Logs',
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: buildProvider.clearLogs,
-                                    tooltip: 'Clear logs',
-                                  ),
-                                ],
+                              Text(
+                                selectedProject.name,
+                                style: typography.headline.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                              const Divider(),
-                              Expanded(
-                                child: ListView.builder(
-                                  itemCount: buildProvider.logs.length,
-                                  itemBuilder: (context, index) {
-                                    return Text(
-                                      buildProvider.logs[index],
-                                      style: const TextStyle(
-                                        fontFamily: 'monospace',
-                                        fontSize: 12,
-                                      ),
-                                    );
-                                  },
+                              const SizedBox(height: 2),
+                              Text(
+                                selectedProject.path,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: typography.caption1.copyWith(
+                                  color: MacosColors.secondaryLabelColor
+                                      .resolveFrom(context),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
+                  const SizedBox(height: 22),
+                  const SectionHeader(
+                    title: 'Configuration',
+                    subtitle: 'Choose target platform, mode, and options',
+                  ),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Platform', style: typography.headline),
+                        const SizedBox(height: 10),
+                        MacosPopupButton<BuildPlatform>(
+                          value: _selectedPlatform,
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() => _selectedPlatform = value);
+                            }
+                          },
+                          items: BuildPlatform.values
+                              .map(
+                                (platform) => MacosPopupMenuItem(
+                                  value: platform,
+                                  child: Text(_platformLabel(platform)),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                        if (_selectedPlatform == BuildPlatform.android) ...[
+                          const SizedBox(height: 16),
+                          Text('Android artifact', style: typography.headline),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 8,
+                            children: [
+                              _RadioLabel(
+                                label: 'APK',
+                                selected: _androidBuildType == BuildType.apk,
+                                onTap: () => setState(
+                                  () => _androidBuildType = BuildType.apk,
+                                ),
+                              ),
+                              _RadioLabel(
+                                label: 'App Bundle (AAB)',
+                                selected:
+                                    _androidBuildType == BuildType.appbundle,
+                                onTap: () => setState(
+                                  () =>
+                                      _androidBuildType = BuildType.appbundle,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        Text('Build mode', style: typography.headline),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 16,
+                          runSpacing: 8,
+                          children: BuildMode.values.map((mode) {
+                            return _RadioLabel(
+                              label: mode.name,
+                              selected: _selectedMode == mode,
+                              onTap: () =>
+                                  setState(() => _selectedMode = mode),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Advanced', style: typography.headline),
+                        const SizedBox(height: 12),
+                        MacosTextField(
+                          placeholder: 'Flavor (optional)',
+                          onChanged: (value) {
+                            _flavor = value.isEmpty ? null : value;
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        _SwitchRow(
+                          title: 'Obfuscate',
+                          subtitle:
+                              'Obfuscate Dart code (also enables split debug info)',
+                          value: _obfuscate,
+                          onChanged: (value) {
+                            setState(() {
+                              _obfuscate = value;
+                              if (value) _splitDebugInfo = true;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        _SwitchRow(
+                          title: 'Split debug info',
+                          subtitle: 'Store debug symbols separately',
+                          value: _splitDebugInfo,
+                          onChanged: _obfuscate
+                              ? null
+                              : (value) {
+                                  setState(() => _splitDebugInfo = value);
+                                },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SleekButton(
+                          size: SleekButtonSize.large,
+                          expanded: true,
+                          onPressed: buildProvider.isBuilding
+                              ? null
+                              : () => _startBuild(context),
+                          leadingIcon: buildProvider.isBuilding
+                              ? null
+                              : CupertinoIcons.hammer_fill,
+                          child: buildProvider.isBuilding
+                              ? const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ProgressCircle(radius: 8),
+                                    SizedBox(width: 8),
+                                    Text('Building…'),
+                                  ],
+                                )
+                              : const Text('Start Build'),
+                        ),
+                      ),
+                      if (buildProvider.isBuilding) ...[
+                        const SizedBox(width: 12),
+                        SleekButton.label(
+                          label: 'Cancel',
+                          size: SleekButtonSize.large,
+                          secondary: true,
+                          onPressed: buildProvider.cancelBuild,
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (buildProvider.logs.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    SectionHeader(
+                      title: 'Live logs',
+                      subtitle: '${buildProvider.logs.length} lines',
+                      trailing: SleekButton.label(
+                        label: 'Clear',
+                        size: SleekButtonSize.small,
+                        secondary: true,
+                        onPressed: buildProvider.clearLogs,
+                      ),
+                    ),
+                    SectionCard(
+                      padding: const EdgeInsets.all(10),
+                      child: Container(
+                        height: 300,
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1C1C1E),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: ListView.builder(
+                          controller: _logScrollController,
+                          itemCount: buildProvider.logs.length,
+                          itemBuilder: (context, index) {
+                            return Text(
+                              buildProvider.logs[index],
+                              style: const TextStyle(
+                                fontFamily: 'Menlo',
+                                fontSize: 11.5,
+                                height: 1.45,
+                                color: Color(0xFF32D74B),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -280,23 +311,132 @@ class _BuildConfigWidgetState extends State<BuildConfigWidget> {
     );
   }
 
-  void _startBuild(BuildContext context) {
+  String _platformLabel(BuildPlatform platform) {
+    switch (platform) {
+      case BuildPlatform.android:
+        return 'Android';
+      case BuildPlatform.ios:
+        return 'iOS';
+      case BuildPlatform.web:
+        return 'Web';
+      case BuildPlatform.linux:
+        return 'Linux';
+      case BuildPlatform.macos:
+        return 'macOS';
+      case BuildPlatform.windows:
+        return 'Windows';
+    }
+  }
+
+  Future<void> _startBuild(BuildContext context) async {
     final project = context.read<ProjectProvider>().selectedProject!;
     final config = BuildConfig(
       mode: _selectedMode,
       platform: _selectedPlatform,
+      buildType: _selectedPlatform == BuildPlatform.android
+          ? _androidBuildType
+          : null,
       flavor: _flavor,
       obfuscate: _obfuscate,
-      splitDebugInfo: _splitDebugInfo,
+      splitDebugInfo: _splitDebugInfo || _obfuscate,
     );
 
-    context.read<BuildProvider>().startBuild(project, config);
+    try {
+      await context.read<BuildProvider>().startBuild(project, config);
+    } catch (e) {
+      if (!context.mounted) return;
+      await showMacosAlertDialog(
+        context: context,
+        builder: (_) => MacosAlertDialog(
+          appIcon: const MacosIcon(
+            CupertinoIcons.exclamationmark_triangle_fill,
+            size: 64,
+            color: MacosColors.systemOrangeColor,
+          ),
+          title: Text(
+            'Could Not Start Build',
+            style: MacosTheme.of(context).typography.headline,
+          ),
+          message: Text('$e', textAlign: TextAlign.center),
+          primaryButton: PushButton(
+            controlSize: ControlSize.large,
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ),
+      );
+    }
+  }
+}
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Build started!'),
-        backgroundColor: Colors.green,
+class _RadioLabel extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _RadioLabel({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MacosRadioButton<bool>(
+              value: true,
+              groupValue: selected,
+              onChanged: (_) => onTap(),
+            ),
+            const SizedBox(width: 6),
+            Text(label, style: MacosTheme.of(context).typography.body),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _SwitchRow extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  const _SwitchRow({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final typography = MacosTheme.of(context).typography;
+    final secondary = MacosColors.secondaryLabelColor.resolveFrom(context);
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: typography.body),
+              Text(
+                subtitle,
+                style: typography.caption1.copyWith(color: secondary),
+              ),
+            ],
+          ),
+        ),
+        MacosSwitch(value: value, onChanged: onChanged),
+      ],
     );
   }
 }

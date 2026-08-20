@@ -37,6 +37,7 @@ Map<String, dynamic> _$FlutterProjectToJson(FlutterProject instance) =>
 BuildConfig _$BuildConfigFromJson(Map<String, dynamic> json) => BuildConfig(
   mode: $enumDecode(_$BuildModeEnumMap, json['mode']),
   platform: $enumDecode(_$BuildPlatformEnumMap, json['platform']),
+  buildType: $enumDecodeNullable(_$BuildTypeEnumMap, json['buildType']),
   flavor: json['flavor'] as String?,
   obfuscate: json['obfuscate'] as bool? ?? false,
   splitDebugInfo: json['splitDebugInfo'] as bool? ?? false,
@@ -46,6 +47,7 @@ Map<String, dynamic> _$BuildConfigToJson(BuildConfig instance) =>
     <String, dynamic>{
       'mode': _$BuildModeEnumMap[instance.mode]!,
       'platform': _$BuildPlatformEnumMap[instance.platform]!,
+      'buildType': _$BuildTypeEnumMap[instance.buildType],
       'flavor': instance.flavor,
       'obfuscate': instance.obfuscate,
       'splitDebugInfo': instance.splitDebugInfo,
@@ -64,4 +66,10 @@ const _$BuildPlatformEnumMap = {
   BuildPlatform.linux: 'linux',
   BuildPlatform.macos: 'macos',
   BuildPlatform.windows: 'windows',
+};
+
+const _$BuildTypeEnumMap = {
+  BuildType.apk: 'apk',
+  BuildType.appbundle: 'appbundle',
+  BuildType.ipa: 'ipa',
 };

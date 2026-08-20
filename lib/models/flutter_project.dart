@@ -52,6 +52,7 @@ class FlutterProject {
 class BuildConfig {
   final BuildMode mode;
   final BuildPlatform platform;
+  final BuildType? buildType;
   final String? flavor;
   final bool obfuscate;
   final bool splitDebugInfo;
@@ -59,6 +60,7 @@ class BuildConfig {
   BuildConfig({
     required this.mode,
     required this.platform,
+    this.buildType,
     this.flavor,
     this.obfuscate = false,
     this.splitDebugInfo = false,
@@ -68,6 +70,19 @@ class BuildConfig {
       _$BuildConfigFromJson(json);
 
   Map<String, dynamic> toJson() => _$BuildConfigToJson(this);
+
+  /// Effective Android artifact type (defaults to APK).
+  BuildType get effectiveBuildType {
+    if (buildType != null) return buildType!;
+    switch (platform) {
+      case BuildPlatform.android:
+        return BuildType.apk;
+      case BuildPlatform.ios:
+        return BuildType.ipa;
+      default:
+        return BuildType.apk;
+    }
+  }
 }
 
 enum BuildMode {

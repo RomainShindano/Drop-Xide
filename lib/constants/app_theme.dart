@@ -1,57 +1,24 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:macos_ui/macos_ui.dart';
 
 class AppTheme {
-  static const Color primaryColor = Color(0xFF2196F3);
-  static const Color secondaryColor = Color(0xFF03DAC6);
-  static const Color errorColor = Color(0xFFB00020);
-  static const Color successColor = Color(0xFF4CAF50);
-  static const Color warningColor = Color(0xFFFFC107);
+  static MacosThemeData get light => MacosThemeData.light(
+        accentColor: AccentColor.blue,
+      ).copyWith(
+        pushButtonTheme: const PushButtonThemeData(
+          color: Color(0xFF007AFF),
+          disabledColor: Color(0x33007AFF),
+          secondaryColor: Color(0x14000000),
+        ),
+      );
 
-  static ThemeData lightTheme = ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: primaryColor,
-      brightness: Brightness.light,
-    ),
-    appBarTheme: const AppBarTheme(
-      centerTitle: true,
-      elevation: 0,
-    ),
-    cardTheme: CardTheme(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
-      filled: true,
-    ),
-  );
-
-  static ThemeData darkTheme = ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: primaryColor,
-      brightness: Brightness.dark,
-    ),
-    appBarTheme: const AppBarTheme(
-      centerTitle: true,
-      elevation: 0,
-    ),
-    cardTheme: CardTheme(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
-      filled: true,
-    ),
-  );
+  static MacosThemeData get dark => MacosThemeData.dark(
+        accentColor: AccentColor.blue,
+      ).copyWith(
+        pushButtonTheme: const PushButtonThemeData(
+          color: Color(0xFF0A84FF),
+          disabledColor: Color(0x330A84FF),
+          secondaryColor: Color(0x22FFFFFF),
+        ),
+      );
 }

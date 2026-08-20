@@ -4,7 +4,6 @@ import 'package:path/path.dart' as path;
 import 'package:yaml/yaml.dart';
 import 'package:uuid/uuid.dart';
 import '../models/flutter_project.dart';
-import '../models/build_history.dart';
 import 'database_service.dart';
 
 class ProjectService {
@@ -51,6 +50,11 @@ class ProjectService {
   }
 
   Future<void> deleteProject(String id) async {
+    await _db.delete(
+      'build_history',
+      where: 'project_id = ?',
+      whereArgs: [id],
+    );
     await _db.delete('projects', where: 'id = ?', whereArgs: [id]);
   }
 

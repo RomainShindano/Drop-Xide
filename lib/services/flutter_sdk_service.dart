@@ -1,6 +1,4 @@
 import 'dart:io';
-import 'package:path/path.dart' as path;
-import 'package:process_run/shell.dart';
 
 class FlutterSdkService {
   String? _flutterPath;
@@ -8,20 +6,88 @@ class FlutterSdkService {
 
   Future<bool> detectFlutterSdk() async {
     try {
-      final result = await Shell().run('flutter --version');
-      if (result.isNotEmpty) {
-        _flutterVersion = result.first.stdout.toString().split('\n').first;
-        final whichResult = await Shell().run('which flutter');
-        if (whichResult.isNotEmpty) {
-          _flutterPath = whichResult.first.stdout.toString().trim();
-        }
-        return true;
+      final which = await Process.run(
+        '/usr/bin/which',
+        ['flutter'],
+        environment: _loginEnvironment(),
+        runInShell: false,
+      );
+      final resolved = which.stdout.toString().trim().split('\n').firstWhere(
+            (line) => line.isNotEmpty,
+            orElse: () => '',
+          );
+
+      final flutterBin = resolved.isNotEmpty
+          ? resolved
+          : _fallbackFlutterPaths().firstWhere(
+              (p) => File(p).existsSync(),
+              orElse: () => '',
+            );
+
+      if (flutterBin.isEmpty) {
+        _flutterPath = null;
+        _flutterVersion = null;
+        return false;
       }
-    } catch (e) {
+
+      final version = await Process.run(
+        flutterBin,
+        ['--version'],
+        environment: _loginEnvironment(),
+        runInShell: false,
+      );
+
+      if (version.exitCode != 0) {
+        _flutterPath = null;
+        _flutterVersion = null;
+        return false;
+      }
+
+      _flutterPath = flutterBin;
+      _flutterVersion = version.stdout.toString().split('\n').first.trim();
+      return true;
+    } catch (_) {
       _flutterPath = null;
       _flutterVersion = null;
+      return false;
     }
-    return false;
+  }
+
+  Map<String, String> _loginEnvironment() {
+    final env = Map<String, String>.from(Platform.environment);
+    final home = env['HOME'];
+    // Avoid leftover App Sandbox container paths as cwd/home for tool lookup.
+    if (home != null && home.contains('/Library/Containers/')) {
+      final match = RegExp(r'^/Users/[^/]+').firstMatch(home);
+      if (match != null) {
+        env['HOME'] = match.group(0)!;
+      }
+    }
+
+    final path = env['PATH'] ?? '';
+    const extras = [
+      '/opt/homebrew/bin',
+      '/usr/local/bin',
+      '/usr/bin',
+      '/bin',
+    ];
+    final parts = <String>{
+      ...extras,
+      ...path.split(':').where((p) => p.isNotEmpty),
+    };
+    env['PATH'] = parts.join(':');
+    return env;
+  }
+
+  List<String> _fallbackFlutterPaths() {
+    final home = Platform.environment['HOME'] ?? '';
+    return [
+      '/opt/homebrew/bin/flutter',
+      '/usr/local/bin/flutter',
+      if (home.isNotEmpty) '$home/flutter/bin/flutter',
+      if (home.isNotEmpty) '$home/development/flutter/bin/flutter',
+      '/opt/homebrew/share/flutter/bin/flutter',
+    ];
   }
 
   Future<Map<String, dynamic>> getFlutterInfo() async {
@@ -37,7 +103,7 @@ class FlutterSdkService {
   }
 
   Future<bool> validateFlutterSdk() async {
-    return await detectFlutterSdk();
+    return detectFlutterSdk();
   }
 
   String? get flutterPath => _flutterPath;

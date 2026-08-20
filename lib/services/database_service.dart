@@ -1,6 +1,5 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'dart:convert';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._internal();
@@ -21,6 +20,9 @@ class DatabaseService {
     return await openDatabase(
       path,
       version: 1,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );

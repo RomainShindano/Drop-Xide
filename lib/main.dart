@@ -1,47 +1,66 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show ThemeMode;
+import 'package:macos_ui/macos_ui.dart';
 import 'package:provider/provider.dart';
-import 'package:window_manager/window_manager.dart';
 import 'screens/home_screen.dart';
 import 'providers/project_provider.dart';
 import 'providers/build_provider.dart';
+import 'providers/settings_provider.dart';
 import 'constants/app_theme.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  await windowManager.ensureInitialized();
-
-  WindowOptions windowOptions = const WindowOptions(
-    size: Size(1200, 800),
-    minimumSize: Size(800, 600),
-    center: true,
-    title: 'Drop-Xide',
-    titleBarStyle: TitleBarStyle.normal,
+Future<void> _configureMacosWindowUtils() async {
+  const config = MacosWindowUtilsConfig(
+    toolbarStyle: NSWindowToolbarStyle.unified,
   );
+  await config.apply();
 
-  windowManager.waitUntilReadyToShow(windowOptions, () async {
-    await windowManager.show();
-    await windowManager.focus();
-  });
+  await WindowManipulator.setWindowFrame(
+    const Rect.fromLTWH(120, 80, 900, 620),
+    animate: false,
+  );
+  await WindowManipulator.setWindowMinSize(const Size(900, 620));
+}
 
-  runApp(const MyApp());
+void main() async {
+  await _configureMacosWindowUtils();
+
+  final projectProvider = ProjectProvider()..loadProjects();
+  final buildProvider = BuildProvider()..loadBuildHistory();
+  buildProvider.onProjectUpdated = projectProvider.applyLocalUpdate;
+
+  runApp(
+    MyApp(
+      projectProvider: projectProvider,
+      buildProvider: buildProvider,
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final ProjectProvider projectProvider;
+  final BuildProvider buildProvider;
+
+  const MyApp({
+    super.key,
+    required this.projectProvider,
+    required this.buildProvider,
+  });
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => ProjectProvider()..loadProjects()),
-        ChangeNotifierProvider(create: (_) => BuildProvider()..loadBuildHistory()),
+        ChangeNotifierProvider.value(value: projectProvider),
+        ChangeNotifierProvider.value(value: buildProvider),
+        ChangeNotifierProvider(
+          create: (_) => SettingsProvider()..load(),
+        ),
       ],
-      child: MaterialApp(
-        title: 'Drop-Xide',
+      child: MacosApp(
+        title: 'DropXide',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
         themeMode: ThemeMode.system,
         home: const HomeScreen(),
       ),

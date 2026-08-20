@@ -1,335 +1,477 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import 'dart:io';
-import '../providers/build_provider.dart';
-import '../models/build_history.dart';
 
-class BuildHistoryWidget extends StatelessWidget {
+import 'package:flutter/cupertino.dart';
+import 'package:intl/intl.dart';
+import 'package:macos_ui/macos_ui.dart';
+import 'package:provider/provider.dart';
+import '../providers/build_provider.dart';
+import '../providers/project_provider.dart';
+import '../models/build_history.dart';
+import 'ui/macos_polish.dart';
+import 'ui/sleek_button.dart';
+
+class BuildHistoryWidget extends StatefulWidget {
   const BuildHistoryWidget({super.key});
 
   @override
+  State<BuildHistoryWidget> createState() => _BuildHistoryWidgetState();
+}
+
+class _BuildHistoryWidgetState extends State<BuildHistoryWidget> {
+  bool _filterToSelectedProject = true;
+  String? _expandedId;
+  String? _lastSelectedProjectId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final selectedId = context.read<ProjectProvider>().selectedProject?.id;
+    if (selectedId != _lastSelectedProjectId) {
+      _lastSelectedProjectId = selectedId;
+      if (_filterToSelectedProject) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _reload();
+        });
+      }
+    }
+  }
+
+  Future<void> _reload() async {
+    final projectId = _filterToSelectedProject
+        ? context.read<ProjectProvider>().selectedProject?.id
+        : null;
+    await context.read<BuildProvider>().loadBuildHistory(projectId: projectId);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final selectedProject = context.watch<ProjectProvider>().selectedProject;
+
     return Consumer<BuildProvider>(
       builder: (context, provider, child) {
         if (provider.isLoading) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: ProgressCircle());
         }
 
         if (provider.error != null) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error, size: 64, color: Colors.red),
-                const SizedBox(height: 16),
-                Text('Error: ${provider.error}'),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => provider.loadBuildHistory(),
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
+          return EmptyState(
+            icon: CupertinoIcons.exclamationmark_circle,
+            title: 'Couldn’t load history',
+            message: provider.error!,
+            actionLabel: 'Retry',
+            onAction: _reload,
           );
         }
 
         if (provider.buildHistory.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.history, size: 100, color: Colors.grey),
-                const SizedBox(height: 20),
-                const Text(
-                  'No Build History',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-                const Text('Your build history will appear here'),
-              ],
-            ),
+          return EmptyState(
+            icon: CupertinoIcons.clock,
+            title: _filterToSelectedProject && selectedProject != null
+                ? 'No builds for ${selectedProject.name}'
+                : 'No builds yet',
+            message: _filterToSelectedProject && selectedProject != null
+                ? 'Run a build for this project, or show all projects.'
+                : 'Successful and failed builds appear here with full logs.',
+            actionLabel: _filterToSelectedProject && selectedProject != null
+                ? 'Show all projects'
+                : null,
+            onAction: _filterToSelectedProject && selectedProject != null
+                ? () {
+                    setState(() => _filterToSelectedProject = false);
+                    _reload();
+                  }
+                : null,
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: provider.buildHistory.length,
-          itemBuilder: (context, index) {
-            final build = provider.buildHistory[index];
-            return _BuildHistoryCard(build: build);
-          },
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+              child: SectionHeader(
+                title: 'Builds & logs',
+                subtitle: _filterToSelectedProject && selectedProject != null
+                    ? '${provider.buildHistory.length} for ${selectedProject.name}'
+                    : '${provider.buildHistory.length} across all projects',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      selectedProject == null
+                          ? 'All projects'
+                          : 'Selected only',
+                      style: MacosTheme.of(context).typography.caption1,
+                    ),
+                    const SizedBox(width: 8),
+                    MacosSwitch(
+                      value: _filterToSelectedProject && selectedProject != null,
+                      onChanged: selectedProject == null
+                          ? null
+                          : (value) {
+                              setState(() => _filterToSelectedProject = value);
+                              _reload();
+                            },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                itemCount: provider.buildHistory.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final history = provider.buildHistory[index];
+                  final expanded = _expandedId == history.id;
+                  return _HistoryRow(
+                    history: history,
+                    expanded: expanded,
+                    onToggleLogs: () {
+                      setState(() {
+                        _expandedId = expanded ? null : history.id;
+                      });
+                    },
+                    onDelete: () =>
+                        _confirmDelete(context, provider, history.id),
+                  );
+                },
+              ),
+            ),
+          ],
         );
       },
     );
   }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    BuildProvider provider,
+    String id,
+  ) async {
+    final confirm = await showMacosAlertDialog<bool>(
+      context: context,
+      builder: (_) => MacosAlertDialog(
+        appIcon: const MacosIcon(
+          CupertinoIcons.trash,
+          size: 64,
+          color: MacosColors.systemRedColor,
+        ),
+        title: Text(
+          'Delete Build',
+          style: MacosTheme.of(context).typography.headline,
+        ),
+        message: const Text(
+          'Remove this build and its saved logs from history?',
+          textAlign: TextAlign.center,
+        ),
+        primaryButton: PushButton(
+          controlSize: ControlSize.large,
+          color: MacosColors.systemRedColor,
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete'),
+        ),
+        secondaryButton: PushButton(
+          controlSize: ControlSize.large,
+          secondary: true,
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+
+    if (confirm == true) {
+      await provider.deleteBuildHistory(id);
+      if (_expandedId == id) {
+        setState(() => _expandedId = null);
+      }
+    }
+  }
 }
 
-class _BuildHistoryCard extends StatelessWidget {
-  final BuildHistory build;
+class _HistoryRow extends StatelessWidget {
+  final BuildHistory history;
+  final bool expanded;
+  final VoidCallback onToggleLogs;
+  final VoidCallback onDelete;
 
-  const _BuildHistoryCard({required this.build});
+  const _HistoryRow({
+    required this.history,
+    required this.expanded,
+    required this.onToggleLogs,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
-    return Card(
-      child: InkWell(
-        onTap: build.outputPath != null ? () => _openOutputFolder(context) : null,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _StatusIcon(status: build.status),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          build.projectName,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${build.buildConfig.platform.name.toUpperCase()} - ${build.buildConfig.mode.name.toUpperCase()}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _StatusBadge(status: build.status),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _InfoChip(
-                    icon: Icons.calendar_today,
-                    label: DateFormat('MMM d, y HH:mm').format(build.startedAt),
-                  ),
-                  if (build.duration != null)
-                    _InfoChip(
-                      icon: Icons.timer,
-                      label: _formatDuration(build.duration!),
-                    ),
-                  if (build.buildConfig.flavor != null)
-                    _InfoChip(
-                      icon: Icons.label,
-                      label: build.buildConfig.flavor!,
-                    ),
-                ],
-              ),
-              if (build.outputPath != null) ...[
-                const SizedBox(height: 12),
+    final typography = MacosTheme.of(context).typography;
+    final secondary = MacosColors.secondaryLabelColor.resolveFrom(context);
+    final statusColor = _statusColor(history.status);
+    final logCount = history.logs.length;
+
+    return SectionCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          HoverSurface(
+            onTap: onToggleLogs,
+            borderRadius: BorderRadius.circular(10),
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
                   children: [
-                    const Icon(Icons.folder_open, size: 16, color: Colors.blue),
-                    const SizedBox(width: 4),
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Center(
+                        child: MacosIcon(
+                          _statusIcon(history.status),
+                          color: statusColor,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        build.outputPath!,
-                        style: const TextStyle(fontSize: 12, color: Colors.blue),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            history.projectName,
+                            style: typography.headline.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${history.buildConfig.platform.name.toUpperCase()} · ${history.buildConfig.mode.name}',
+                            style:
+                                typography.caption1.copyWith(color: secondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                    StatusPill(
+                      label: _statusLabel(history.status),
+                      color: statusColor,
+                    ),
+                    const SizedBox(width: 6),
+                    MacosIconButton(
+                      icon: MacosIcon(
+                        CupertinoIcons.trash,
+                        color:
+                            MacosColors.systemRedColor.withValues(alpha: 0.85),
+                        size: 14,
+                      ),
+                      onPressed: onDelete,
+                      boxConstraints: const BoxConstraints(
+                        minHeight: 28,
+                        minWidth: 28,
+                        maxHeight: 28,
+                        maxWidth: 28,
                       ),
                     ),
                   ],
                 ),
-              ],
-              if (build.errorMessage != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.error, size: 16, color: Colors.red),
+                const SizedBox(height: 10),
+                Text(
+                  [
+                    DateFormat('MMM d, y HH:mm').format(history.startedAt),
+                    if (history.duration != null)
+                      _formatDuration(history.duration!),
+                    if (history.buildConfig.flavor != null)
+                      history.buildConfig.flavor!,
+                    '$logCount log line${logCount == 1 ? '' : 's'}',
+                  ].join('  ·  '),
+                  style: typography.caption1.copyWith(color: secondary),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    SleekButton.label(
+                      label: expanded ? 'Hide logs' : 'View logs',
+                      size: SleekButtonSize.small,
+                      secondary: true,
+                      leadingIcon: expanded
+                          ? CupertinoIcons.chevron_up
+                          : CupertinoIcons.doc_text,
+                      onPressed: onToggleLogs,
+                    ),
+                    if (history.outputPath != null) ...[
                       const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          build.errorMessage!,
-                          style: const TextStyle(fontSize: 12, color: Colors.red),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      SleekButton.label(
+                        label: 'Open output',
+                        size: SleekButtonSize.small,
+                        secondary: true,
+                        leadingIcon: CupertinoIcons.folder,
+                        onPressed: () => _openOutputFolder(context),
                       ),
                     ],
-                  ),
+                    const Spacer(),
+                    MacosIcon(
+                      expanded
+                          ? CupertinoIcons.chevron_up
+                          : CupertinoIcons.chevron_down,
+                      size: 12,
+                      color: secondary,
+                    ),
+                  ],
                 ),
+                if (history.errorMessage != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    history.errorMessage!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: typography.caption1.copyWith(
+                      color: MacosColors.systemRedColor,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
+          if (expanded) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              padding: const EdgeInsets.all(12),
+              height: 220,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1E),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: logCount == 0
+                  ? Center(
+                      child: Text(
+                        'No logs were saved for this build.',
+                        style: typography.caption1.copyWith(
+                          color: CupertinoColors.systemGrey,
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: logCount,
+                      itemBuilder: (context, index) {
+                        return Text(
+                          history.logs[index],
+                          style: const TextStyle(
+                            fontFamily: 'Menlo',
+                            fontSize: 11.5,
+                            height: 1.4,
+                            color: Color(0xFF32D74B),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ],
       ),
     );
+  }
+
+  Color _statusColor(BuildStatus status) {
+    switch (status) {
+      case BuildStatus.success:
+        return MacosColors.systemGreenColor;
+      case BuildStatus.failed:
+        return MacosColors.systemRedColor;
+      case BuildStatus.running:
+        return MacosColors.systemBlueColor;
+      case BuildStatus.cancelled:
+        return MacosColors.systemOrangeColor;
+      case BuildStatus.pending:
+        return MacosColors.systemGrayColor;
+    }
+  }
+
+  IconData _statusIcon(BuildStatus status) {
+    switch (status) {
+      case BuildStatus.success:
+        return CupertinoIcons.check_mark_circled_solid;
+      case BuildStatus.failed:
+        return CupertinoIcons.xmark_circle_fill;
+      case BuildStatus.running:
+        return CupertinoIcons.arrow_2_circlepath;
+      case BuildStatus.cancelled:
+        return CupertinoIcons.stop_circle_fill;
+      case BuildStatus.pending:
+        return CupertinoIcons.clock_fill;
+    }
+  }
+
+  String _statusLabel(BuildStatus status) {
+    switch (status) {
+      case BuildStatus.success:
+        return 'Success';
+      case BuildStatus.failed:
+        return 'Failed';
+      case BuildStatus.running:
+        return 'Running';
+      case BuildStatus.cancelled:
+        return 'Cancelled';
+      case BuildStatus.pending:
+        return 'Pending';
+    }
   }
 
   String _formatDuration(Duration duration) {
     if (duration.inHours > 0) {
       return '${duration.inHours}h ${duration.inMinutes.remainder(60)}m';
-    } else if (duration.inMinutes > 0) {
-      return '${duration.inMinutes}m ${duration.inSeconds.remainder(60)}s';
-    } else {
-      return '${duration.inSeconds}s';
     }
+    if (duration.inMinutes > 0) {
+      return '${duration.inMinutes}m ${duration.inSeconds.remainder(60)}s';
+    }
+    return '${duration.inSeconds}s';
   }
 
-  void _openOutputFolder(BuildContext context) async {
-    if (build.outputPath == null) return;
+  Future<void> _openOutputFolder(BuildContext context) async {
+    if (history.outputPath == null) return;
 
     try {
       if (Platform.isMacOS) {
-        await Process.run('open', [build.outputPath!]);
+        await Process.run('open', [history.outputPath!]);
       } else if (Platform.isLinux) {
-        await Process.run('xdg-open', [build.outputPath!]);
+        await Process.run('xdg-open', [history.outputPath!]);
       } else if (Platform.isWindows) {
-        await Process.run('explorer', [build.outputPath!]);
+        await Process.run('explorer', [history.outputPath!]);
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to open folder: $e'),
-            backgroundColor: Colors.red,
+      if (!context.mounted) return;
+      await showMacosAlertDialog(
+        context: context,
+        builder: (_) => MacosAlertDialog(
+          appIcon: const MacosIcon(
+            CupertinoIcons.exclamationmark_triangle_fill,
+            size: 64,
+            color: MacosColors.systemOrangeColor,
           ),
-        );
-      }
-    }
-  }
-}
-
-class _StatusIcon extends StatelessWidget {
-  final BuildStatus status;
-
-  const _StatusIcon({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    IconData icon;
-    Color color;
-
-    switch (status) {
-      case BuildStatus.success:
-        icon = Icons.check_circle;
-        color = Colors.green;
-        break;
-      case BuildStatus.failed:
-        icon = Icons.error;
-        color = Colors.red;
-        break;
-      case BuildStatus.running:
-        icon = Icons.sync;
-        color = Colors.blue;
-        break;
-      case BuildStatus.cancelled:
-        icon = Icons.cancel;
-        color = Colors.orange;
-        break;
-      case BuildStatus.pending:
-        icon = Icons.pending;
-        color = Colors.grey;
-        break;
-    }
-
-    return Icon(icon, color: color, size: 32);
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final BuildStatus status;
-
-  const _StatusBadge({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    Color color;
-    String label;
-
-    switch (status) {
-      case BuildStatus.success:
-        color = Colors.green;
-        label = 'SUCCESS';
-        break;
-      case BuildStatus.failed:
-        color = Colors.red;
-        label = 'FAILED';
-        break;
-      case BuildStatus.running:
-        color = Colors.blue;
-        label = 'RUNNING';
-        break;
-      case BuildStatus.cancelled:
-        color = Colors.orange;
-        label = 'CANCELLED';
-        break;
-      case BuildStatus.pending:
-        color = Colors.grey;
-        label = 'PENDING';
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
+          title: Text(
+            'Could Not Open Folder',
+            style: MacosTheme.of(context).typography.headline,
+          ),
+          message: Text('$e', textAlign: TextAlign.center),
+          primaryButton: PushButton(
+            controlSize: ControlSize.large,
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
         ),
-      ),
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _InfoChip({
-    required this.icon,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12),
-          ),
-        ],
-      ),
-    );
+      );
+    }
   }
 }

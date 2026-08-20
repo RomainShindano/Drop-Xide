@@ -1,9 +1,11 @@
-import 'dart:io';
-import 'dart:convert';
+import 'package:_discoveryapis_commons/_discoveryapis_commons.dart' as commons;
 import 'package:googleapis/androidpublisher/v3.dart';
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
+import 'dart:convert';
+import 'dart:io';
+
 import '../models/google_service_account.dart';
 import 'database_service.dart';
 
@@ -21,7 +23,13 @@ class GooglePlayService {
     }
 
     final credentialsJson = await credentialsFile.readAsString();
-    final credentials = jsonDecode(credentialsJson);
+    final credentials = jsonDecode(credentialsJson) as Map<String, dynamic>;
+
+    if (credentials['client_email'] == null ||
+        credentials['project_id'] == null ||
+        credentials['private_key'] == null) {
+      throw Exception('Invalid service account JSON');
+    }
 
     final serviceAccount = GoogleServiceAccount(
       id: _uuid.v4(),
@@ -46,8 +54,9 @@ class GooglePlayService {
   }
 
   Future<List<GoogleServiceAccount>> getServiceAccounts() async {
-    final results = await _db.query('service_accounts', orderBy: 'added_at DESC');
-    return results.map((data) => _mapToServiceAccount(data)).toList();
+    final results =
+        await _db.query('service_accounts', orderBy: 'added_at DESC');
+    return results.map(_mapToServiceAccount).toList();
   }
 
   Future<GoogleServiceAccount?> getServiceAccount(String id) async {
@@ -78,7 +87,9 @@ class GooglePlayService {
     await _db.delete('service_accounts', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<AndroidPublisherApi> _getPublisherApi(String accountId) async {
+  Future<({AndroidPublisherApi api, http.Client client})> _getPublisherApi(
+    String accountId,
+  ) async {
     final results = await _db.query(
       'service_accounts',
       where: 'id = ?',
@@ -91,11 +102,10 @@ class GooglePlayService {
 
     final credentialsJson = results.first['credentials'] as String;
     final credentials = ServiceAccountCredentials.fromJson(credentialsJson);
-
     final scopes = [AndroidPublisherApi.androidpublisherScope];
     final client = await clientViaServiceAccount(credentials, scopes);
 
-    return AndroidPublisherApi(client);
+    return (api: AndroidPublisherApi(client), client: client);
   }
 
   Future<void> uploadToPlayStore({
@@ -104,55 +114,71 @@ class GooglePlayService {
     required String aabPath,
     required PublishConfig config,
   }) async {
-    final api = await _getPublisherApi(accountId);
-    
-    final aabFile = File(aabPath);
-    if (!await aabFile.exists()) {
-      throw Exception('AAB file not found: $aabPath');
-    }
-
-    final edit = await api.edits.insert(AppEdit(), packageName);
-    final editId = edit.id!;
+    final session = await _getPublisherApi(accountId);
+    final api = session.api;
+    final client = session.client;
 
     try {
-      final bundle = await aabFile.readAsBytes();
-      
-      final uploadRequest = http.MultipartRequest(
-        'POST',
-        Uri.parse(
-          'https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$packageName/edits/$editId/bundles',
-        ),
-      );
-      uploadRequest.files.add(
-        http.MultipartFile.fromBytes('file', bundle, filename: 'bundle.aab'),
-      );
+      final aabFile = File(aabPath);
+      if (!await aabFile.exists()) {
+        throw Exception('AAB file not found: $aabPath');
+      }
 
-      await api.edits.tracks.update(
-        Track(
-          track: config.track.name,
-          releases: [
-            TrackRelease(
-              name: config.releaseNotes,
-              status: 'completed',
-              releaseNotes: [
-                LocalizedText(
-                  language: 'en-US',
-                  text: config.releaseNotes,
-                ),
-              ],
-              userFraction: config.userFraction,
-            ),
-          ],
-        ),
-        packageName,
-        editId,
-        config.track.name,
-      );
+      final edit = await api.edits.insert(AppEdit(), packageName);
+      final editId = edit.id!;
 
-      await api.edits.commit(packageName, editId);
-    } catch (e) {
-      await api.edits.delete(packageName, editId);
-      rethrow;
+      try {
+        final length = await aabFile.length();
+        final media = commons.Media(
+          aabFile.openRead(),
+          length,
+          contentType: 'application/octet-stream',
+        );
+
+        final bundle = await api.edits.bundles.upload(
+          packageName,
+          editId,
+          uploadMedia: media,
+        );
+
+        final versionCode = bundle.versionCode;
+        final isStaged =
+            config.userFraction != null && config.userFraction! < 1.0;
+
+        await api.edits.tracks.update(
+          Track(
+            track: config.track.name,
+            releases: [
+              TrackRelease(
+                name: config.releaseNotes,
+                status: isStaged ? 'inProgress' : 'completed',
+                versionCodes: versionCode != null
+                    ? [versionCode.toString()]
+                    : null,
+                releaseNotes: [
+                  LocalizedText(
+                    language: 'en-US',
+                    text: config.releaseNotes,
+                  ),
+                ],
+                userFraction: isStaged ? config.userFraction : null,
+              ),
+            ],
+          ),
+          packageName,
+          editId,
+          config.track.name,
+        );
+
+        await api.edits.commit(packageName, editId);
+      } catch (e) {
+        try {
+          await api.edits.delete(packageName, editId);
+        } catch (_) {}
+        rethrow;
+      }
+    } finally {
+      client.close();
     }
   }
 
@@ -160,17 +186,26 @@ class GooglePlayService {
     String accountId,
     String packageName,
   ) async {
-    final api = await _getPublisherApi(accountId);
-    
+    final session = await _getPublisherApi(accountId);
+    final api = session.api;
+    final client = session.client;
+
     try {
-      final appDetails = await api.applications.get(packageName);
-      return {
-        'packageName': packageName,
-        'title': appDetails.title,
-        'defaultLanguage': appDetails.defaultLanguage,
-      };
-    } catch (e) {
-      throw Exception('Failed to fetch app info: $e');
+      final edit = await api.edits.insert(AppEdit(), packageName);
+      final editId = edit.id!;
+      try {
+        final details = await api.edits.details.get(packageName, editId);
+        return {
+          'packageName': packageName,
+          'title': details.defaultLanguage,
+          'contactEmail': details.contactEmail,
+          'contactWebsite': details.contactWebsite,
+        };
+      } finally {
+        await api.edits.delete(packageName, editId);
+      }
+    } finally {
+      client.close();
     }
   }
 

@@ -1,74 +1,56 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:macos_ui/macos_ui.dart';
 
 class ErrorHandler {
-  static void showErrorSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 5),
-        action: SnackBarAction(
-          label: 'Dismiss',
-          textColor: Colors.white,
-          onPressed: () {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          },
-        ),
-      ),
+  static Future<void> showErrorSnackBar(
+    BuildContext context,
+    String message,
+  ) {
+    return _showAlert(
+      context,
+      title: 'Error',
+      message: message,
+      icon: CupertinoIcons.exclamationmark_circle_fill,
+      iconColor: MacosColors.systemRedColor,
     );
   }
 
-  static void showSuccessSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_outline, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
+  static Future<void> showSuccessSnackBar(
+    BuildContext context,
+    String message,
+  ) {
+    return _showAlert(
+      context,
+      title: 'Success',
+      message: message,
+      icon: CupertinoIcons.checkmark_circle_fill,
+      iconColor: MacosColors.systemGreenColor,
     );
   }
 
-  static void showWarningSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.warning_outlined, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: Colors.orange,
-        duration: const Duration(seconds: 4),
-      ),
+  static Future<void> showWarningSnackBar(
+    BuildContext context,
+    String message,
+  ) {
+    return _showAlert(
+      context,
+      title: 'Warning',
+      message: message,
+      icon: CupertinoIcons.exclamationmark_triangle_fill,
+      iconColor: MacosColors.systemOrangeColor,
     );
   }
 
-  static void showInfoSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.info_outline, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: Colors.blue,
-        duration: const Duration(seconds: 3),
-      ),
+  static Future<void> showInfoSnackBar(
+    BuildContext context,
+    String message,
+  ) {
+    return _showAlert(
+      context,
+      title: 'Info',
+      message: message,
+      icon: CupertinoIcons.info_circle_fill,
+      iconColor: MacosColors.systemBlueColor,
     );
   }
 
@@ -80,83 +62,78 @@ class ErrorHandler {
     String cancelText = 'Cancel',
     bool isDangerous = false,
   }) async {
-    final result = await showDialog<bool>(
+    final result = await showMacosAlertDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(cancelText),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: isDangerous
-                ? FilledButton.styleFrom(backgroundColor: Colors.red)
-                : null,
-            child: Text(confirmText),
-          ),
-        ],
+      builder: (_) => MacosAlertDialog(
+        appIcon: MacosIcon(
+          isDangerous
+              ? CupertinoIcons.exclamationmark_triangle_fill
+              : CupertinoIcons.question_circle_fill,
+          size: 64,
+          color: isDangerous
+              ? MacosColors.systemOrangeColor
+              : MacosColors.systemBlueColor,
+        ),
+        title: Text(
+          title,
+          style: MacosTheme.of(context).typography.headline,
+        ),
+        message: Text(message, textAlign: TextAlign.center),
+        primaryButton: PushButton(
+          controlSize: ControlSize.large,
+          color: isDangerous ? MacosColors.systemRedColor : null,
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(confirmText),
+        ),
+        secondaryButton: PushButton(
+          controlSize: ControlSize.large,
+          secondary: true,
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(cancelText),
+        ),
       ),
     );
 
     return result ?? false;
   }
 
-  static void showErrorDialog(
+  static Future<void> showErrorDialog(
     BuildContext context, {
     required String title,
     required String message,
     String? details,
   }) {
-    showDialog(
+    final body = details == null ? message : '$message\n\n$details';
+    return _showAlert(
+      context,
+      title: title,
+      message: body,
+      icon: CupertinoIcons.exclamationmark_circle_fill,
+      iconColor: MacosColors.systemRedColor,
+    );
+  }
+
+  static Future<void> _showAlert(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required IconData icon,
+    required Color iconColor,
+  }) {
+    return showMacosAlertDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.error, color: Colors.red),
-            const SizedBox(width: 12),
-            Text(title),
-          ],
+      builder: (_) => MacosAlertDialog(
+        appIcon: MacosIcon(icon, size: 64, color: iconColor),
+        title: Text(
+          title,
+          style: MacosTheme.of(context).typography.headline,
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(message),
-            if (details != null) ...[
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 12),
-              const Text(
-                'Details:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  details,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ],
+        message: Text(message, textAlign: TextAlign.center),
+        primaryButton: PushButton(
+          controlSize: ControlSize.large,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('OK'),
         ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
       ),
     );
   }

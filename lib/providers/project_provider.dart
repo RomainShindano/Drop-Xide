@@ -4,7 +4,7 @@ import '../services/project_service.dart';
 
 class ProjectProvider extends ChangeNotifier {
   final ProjectService _projectService = ProjectService();
-  
+
   List<FlutterProject> _projects = [];
   FlutterProject? _selectedProject;
   bool _isLoading = false;
@@ -21,7 +21,14 @@ class ProjectProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final selectedId = _selectedProject?.id;
       _projects = await _projectService.getProjects();
+      if (selectedId != null) {
+        _selectedProject = _projects
+            .where((p) => p.id == selectedId)
+            .cast<FlutterProject?>()
+            .firstOrNull;
+      }
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -30,7 +37,7 @@ class ProjectProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> addProject(String path) async {
+  Future<FlutterProject> addProject(String path) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -39,8 +46,10 @@ class ProjectProvider extends ChangeNotifier {
       final project = await _projectService.addProject(path);
       _projects.insert(0, project);
       _selectedProject = project;
+      return project;
     } catch (e) {
       _error = e.toString();
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -50,18 +59,23 @@ class ProjectProvider extends ChangeNotifier {
   Future<void> updateProject(FlutterProject project) async {
     try {
       await _projectService.updateProject(project);
-      final index = _projects.indexWhere((p) => p.id == project.id);
-      if (index != -1) {
-        _projects[index] = project;
-        if (_selectedProject?.id == project.id) {
-          _selectedProject = project;
-        }
-        notifyListeners();
-      }
+      applyLocalUpdate(project);
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+      rethrow;
     }
+  }
+
+  void applyLocalUpdate(FlutterProject project) {
+    final index = _projects.indexWhere((p) => p.id == project.id);
+    if (index != -1) {
+      _projects[index] = project;
+    }
+    if (_selectedProject?.id == project.id) {
+      _selectedProject = project;
+    }
+    notifyListeners();
   }
 
   Future<void> deleteProject(String id) async {
@@ -75,6 +89,7 @@ class ProjectProvider extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+      rethrow;
     }
   }
 
