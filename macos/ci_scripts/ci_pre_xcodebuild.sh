@@ -7,7 +7,7 @@ set -euo pipefail
 
 echo "=== DropXide Xcode Cloud: pre-xcodebuild (macOS) ==="
 
-# Clear stale SwiftPM caches that can break FlutterGeneratedPluginSwiftPackage resolution
+# Clear stale SwiftPM caches
 rm -rf ~/Library/Caches/org.swift.swiftpm/artifacts 2>/dev/null || true
 rm -rf /Users/local/Library/Caches/org.swift.swiftpm/artifacts 2>/dev/null || true
 
@@ -17,10 +17,12 @@ export PATH="$FLUTTER_HOME/bin:$PATH"
 
 cd "$CI_PRIMARY_REPOSITORY_PATH/$FLUTTER_PROJECT_PATH"
 
-GENERATED_XCCONFIG="macos/Flutter/ephemeral/Flutter-Generated.xcconfig"
-PACKAGE_DIR="macos/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage"
+# Keep CocoaPods-only mode consistent with pubspec / post-clone
+flutter config --no-enable-swift-package-manager >/dev/null 2>&1 || true
 
-if [ ! -f "$GENERATED_XCCONFIG" ] || [ ! -d "$PACKAGE_DIR" ]; then
+GENERATED_XCCONFIG="macos/Flutter/ephemeral/Flutter-Generated.xcconfig"
+
+if [ ! -f "$GENERATED_XCCONFIG" ]; then
   echo "=== Flutter ephemeral files missing; regenerating ==="
   flutter pub get
   flutter build macos --config-only
@@ -31,13 +33,9 @@ if [ ! -f "$GENERATED_XCCONFIG" ]; then
   exit 1
 fi
 
-if [ ! -d "$PACKAGE_DIR" ]; then
-  echo "ERROR: $PACKAGE_DIR still missing before xcodebuild."
-  exit 1
-fi
-
 # Ensure CocoaPods is in sync (Pods is gitignored)
-if [ ! -f "macos/Pods/Manifest.lock" ] || \
+if [ ! -d "macos/Pods/Pods.xcodeproj" ] || \
+   [ ! -f "macos/Pods/Manifest.lock" ] || \
    ! diff -q "macos/Podfile.lock" "macos/Pods/Manifest.lock" >/dev/null 2>&1; then
   echo "=== CocoaPods out of sync; running pod install ==="
   cd macos
@@ -45,6 +43,17 @@ if [ ! -f "macos/Pods/Manifest.lock" ] || \
   export LC_ALL=en_US.UTF-8
   pod install
   cd ..
+fi
+
+if [ ! -d "macos/Pods/Pods.xcodeproj" ]; then
+  echo "ERROR: macos/Pods/Pods.xcodeproj missing before xcodebuild."
+  echo "Framework 'Pods_Runner' not found will occur if the workspace cannot see Pods."
+  exit 1
+fi
+
+if [ ! -f "macos/Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig" ]; then
+  echo "ERROR: Pods-Runner.release.xcconfig missing before xcodebuild."
+  exit 1
 fi
 
 # Verify FLUTTER_ROOT is set in generated xcconfig (required by macos_assemble.sh)
@@ -55,4 +64,5 @@ if ! grep -q '^FLUTTER_ROOT=' "$GENERATED_XCCONFIG"; then
 fi
 
 echo "=== Flutter + CocoaPods ready for xcodebuild ==="
+echo "=== Use workspace: macos/Runner.xcworkspace ==="
 exit 0

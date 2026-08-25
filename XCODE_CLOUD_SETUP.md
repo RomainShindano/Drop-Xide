@@ -18,11 +18,14 @@ DropXide is a **macOS desktop app**. Use the **macOS** workflow with
 4. **Release entitlements** — App Sandbox + network / file / Flutter runtime entitlements for Mac App Store
 5. **Removed `local_notifier`** — that plugin has no Swift Package Manager support and caused
    `Unable to resolve module dependency: 'local_notifier'`. Notifications now use macOS `osascript`.
+6. **CocoaPods-only macOS plugins** — disabled Swift Package Manager in `pubspec.yaml` and use
+   `use_frameworks! :linkage => :static` so Xcode actually builds/links `Pods_Runner`
+   (fixes `Framework 'Pods_Runner' not found`).
 
 ## Xcode Cloud workflow checklist
 
 1. **Platform**: macOS  
-2. **Workspace**: `macos/Runner.xcworkspace`  
+2. **Workspace**: `macos/Runner.xcworkspace` (**not** `Runner.xcodeproj` — otherwise `Pods_Runner` is missing)  
 3. **Scheme**: `Runner`  
 4. **Archive configuration**: Release (default in scheme)  
 5. **Environment variable**:
@@ -30,6 +33,22 @@ DropXide is a **macOS desktop app**. Use the **macOS** workflow with
    - Value: `stable` (or your exact Flutter version)
 6. **Signing**: Automatic, team matching `DEVELOPMENT_TEAM` (`6C7TC4A89K`)
 7. **Post-action**: App Store Connect → TestFlight (Mac)
+
+## Local recovery for `Framework 'Pods_Runner' not found`
+
+```bash
+flutter clean
+flutter config --no-enable-swift-package-manager
+flutter pub get
+flutter build macos --config-only
+cd macos
+rm -rf Pods Podfile.lock .symlinks
+pod install --repo-update
+cd ..
+open macos/Runner.xcworkspace
+```
+
+Then build/archive from the **workspace**, not the `.xcodeproj`.
 
 ## App Store Connect
 

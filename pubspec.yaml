@@ -66,7 +66,13 @@ dev_dependencies:
   mockito: ^5.4.4
 
 flutter:
+  # Use CocoaPods for macOS plugins. SPM hybrid builds leave the Xcode project
+  # linking Pods_Runner while that framework is never produced, causing:
+  #   Framework 'Pods_Runner' not found
+  config:
+    enable-swift-package-manager: false
+
   uses-material-design: true
-  
+
   assets:
     - assets/images/

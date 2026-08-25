@@ -4,10 +4,12 @@
 #
 # Runs after Xcode Cloud clones the repo, before xcodebuild.
 # Without this script, Flutter ephemeral files and CocoaPods are missing,
-# which causes: Command PhaseScriptExecution failed with a nonzero exit code
+# which causes: Command PhaseScriptExecution failed / Framework Pods_Runner not found
 #
 # Required Xcode Cloud environment variable:
 #   FLUTTER_VERSION  e.g. stable or 3.24.0  (pin to the Flutter version you develop with)
+#
+# IMPORTANT: Xcode Cloud workflow must build macos/Runner.xcworkspace (not .xcodeproj).
 #
 set -euo pipefail
 
@@ -26,6 +28,9 @@ fi
 export PATH="$FLUTTER_HOME/bin:$PATH"
 flutter --version
 
+# Match pubspec.yaml: CocoaPods-only for macOS plugins (avoids Pods_Runner hybrid SPM bug)
+flutter config --no-enable-swift-package-manager
+
 cd "$CI_PRIMARY_REPOSITORY_PATH/$FLUTTER_PROJECT_PATH"
 
 echo "=== Precache macOS artifacts ==="
@@ -35,9 +40,6 @@ echo "=== flutter pub get ==="
 flutter pub get
 
 echo "=== Generate macOS Flutter ephemeral files ==="
-# Creates:
-#   macos/Flutter/ephemeral/Flutter-Generated.xcconfig  (sets FLUTTER_ROOT)
-#   macos/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage
 flutter build macos --config-only
 
 GENERATED_XCCONFIG="macos/Flutter/ephemeral/Flutter-Generated.xcconfig"
@@ -49,22 +51,22 @@ if [ ! -f "$GENERATED_XCCONFIG" ]; then
   exit 1
 fi
 
-if [ ! -d "$PACKAGE_DIR" ]; then
-  echo "ERROR: Expected $PACKAGE_DIR was not generated."
-  ls -la macos/Flutter/ephemeral || true
-  exit 1
+# Package dir may still be generated because the Xcode project references it.
+# It is OK if present as a stub while plugins come from CocoaPods.
+if [ -d "$PACKAGE_DIR" ]; then
+  echo "=== SPM package stub present at $PACKAGE_DIR ==="
 fi
 
 echo "=== Flutter-Generated.xcconfig ==="
 cat "$GENERATED_XCCONFIG"
 
 # CocoaPods is required: Pods/ is gitignored. Without pod install,
-# Xcode "Check Pods Manifest.lock" / "Embed Pods Frameworks" script phases fail
-# with PhaseScriptExecution nonzero exit code.
+# the linker fails with: Framework 'Pods_Runner' not found
 echo "=== pod install ==="
 cd macos
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
+rm -rf Pods
 pod install --repo-update
 cd ..
 
@@ -77,6 +79,23 @@ if [ ! -f "macos/Pods/Manifest.lock" ]; then
   echo "ERROR: macos/Pods/Manifest.lock missing after pod install."
   exit 1
 fi
+
+if [ ! -d "macos/Pods/Pods.xcodeproj" ]; then
+  echo "ERROR: macos/Pods/Pods.xcodeproj missing — Xcode cannot link Pods_Runner."
+  exit 1
+fi
+
+for cfg in debug release profile; do
+  xcconfig="macos/Pods/Target Support Files/Pods-Runner/Pods-Runner.${cfg}.xcconfig"
+  if [ ! -f "$xcconfig" ]; then
+    echo "ERROR: Missing $xcconfig (Pods_Runner will not link)."
+    ls -la "macos/Pods/Target Support Files/Pods-Runner/" || true
+    exit 1
+  fi
+done
+
+echo "=== Pods-Runner ready (Pods_Runner will link via workspace) ==="
+echo "=== Reminder: Xcode Cloud must use macos/Runner.xcworkspace ==="
 
 echo "=== DropXide Xcode Cloud: post-clone complete ==="
 exit 0
