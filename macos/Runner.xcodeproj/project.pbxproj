@@ -338,9 +338,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			# Create empty xcfilelists if missing so Xcode can load this phase;
-			# Flutter's macos_assemble.sh then rewrites them during the build.
-			shellScript = "mkdir -p Flutter/ephemeral\n[ -f Flutter/ephemeral/FlutterInputs.xcfilelist ] || : > Flutter/ephemeral/FlutterInputs.xcfilelist\n[ -f Flutter/ephemeral/FlutterOutputs.xcfilelist ] || : > Flutter/ephemeral/FlutterOutputs.xcfilelist\n\"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh && touch Flutter/ephemeral/tripwire\n";
+			shellScript = "\"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh && touch Flutter/ephemeral/tripwire\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
