@@ -12,3 +12,7 @@ PRODUCT_BUNDLE_IDENTIFIER = com.oxidetech.dropXide
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 Oxide Tech. All rights reserved.
+
+// App Store category UTI. Required by App Store Connect; uploads without it are
+// rejected with ITMS-90242.
+PRODUCT_APP_CATEGORY = public.app-category.developer-tools

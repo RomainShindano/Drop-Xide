@@ -75,6 +75,55 @@ is Xcode Cloud's **Build** action with ad-hoc signing. It compiles only and
 **cannot produce a TestFlight build**. For TestFlight you need an **Archive**
 action in the workflow (with your team's signing), plus a TestFlight post-action.
 
+If the TestFlight post-action's **Artifact** dropdown is empty, this is why:
+a Build action produces no archive to distribute.
+
+## App Store Connect upload rejections
+
+### ITMS-90242 — missing `LSApplicationCategoryType`
+
+Every Mac App Store upload must declare a category. The value comes from
+`PRODUCT_APP_CATEGORY` in `macos/Runner/Configs/AppInfo.xcconfig` and is
+referenced by `LSApplicationCategoryType` in `Runner/Info.plist`. DropXide uses
+`public.app-category.developer-tools`.
+
+### Other upload requirements
+
+- App Store Connect needs a **macOS** app record with bundle ID exactly
+  `com.oxidetech.dropXide`
+- `CFBundleVersion` must increase per upload. It comes from `pubspec.yaml`
+  (`version: 1.0.0+1` → build `1`), so bump the `+N` suffix before re-uploading.
+- Release builds should not request Hardened Runtime exceptions they don't need.
+  Flutter release builds are AOT-compiled, so `com.apple.security.cs.allow-jit`
+  and `allow-unsigned-executable-memory` are unnecessary and invite review
+  questions. They belong only in `DebugProfile.entitlements`.
+
+## App Sandbox blocks DropXide's core feature
+
+TestFlight and the Mac App Store require **App Sandbox**
+(`com.apple.security.app-sandbox`), enabled in `Runner/Release.entitlements`.
+
+A sandboxed app **cannot execute arbitrary external binaries**, which is exactly
+what DropXide does — it runs `git`, the user's `flutter` SDK, `open`, and
+`osascript` through `Process.run` / `Process.start` in `git_service.dart`,
+`flutter_sdk_service.dart`, `build_service.dart`, `notification_service.dart`,
+and `artifact_storage_service.dart`.
+
+A sandboxed build will install and launch, but project detection, branch
+listing, and builds will fail at runtime. No entitlement lifts this restriction.
+
+To ship DropXide as a working build tool, distribute it **outside** the App
+Store:
+
+1. Archive with **Developer ID Application** signing
+2. Notarize (`xcrun notarytool submit`), then staple, and ship a `.dmg`/`.zip`
+3. Set `com.apple.security.app-sandbox` to `false` in `Release.entitlements` —
+   sandbox is not required outside the App Store
+4. Keep **Hardened Runtime** enabled; notarization requires it
+
+Xcode Cloud can still build and notarize this; it produces a Developer ID
+archive instead of using a TestFlight post-action.
+
 ## Xcode Cloud checklist
 
 1. Platform: **macOS**
