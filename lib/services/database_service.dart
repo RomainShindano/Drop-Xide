@@ -70,11 +70,53 @@ class DatabaseService {
     ''');
 
     await db.execute('''
+      CREATE TABLE build_queue (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        project_name TEXT NOT NULL,
+        build_config TEXT NOT NULL,
+        queued_at INTEGER NOT NULL,
+        started_at INTEGER,
+        completed_at INTEGER,
+        status TEXT NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 0,
+        build_history_id TEXT,
+        FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
+        FOREIGN KEY (build_history_id) REFERENCES build_history (id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE build_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        build_config TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER,
+        usage_count INTEGER NOT NULL DEFAULT 0,
+        is_favorite INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
       CREATE INDEX idx_build_history_project_id ON build_history(project_id)
     ''');
 
     await db.execute('''
       CREATE INDEX idx_build_history_started_at ON build_history(started_at DESC)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_build_queue_status ON build_queue(status)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_build_queue_priority ON build_queue(priority DESC, queued_at ASC)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_build_templates_favorite ON build_templates(is_favorite DESC, last_used_at DESC)
     ''');
   }
 
