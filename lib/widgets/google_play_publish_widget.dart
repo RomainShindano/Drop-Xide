@@ -1,11 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:macos_ui/macos_ui.dart';
 import 'package:provider/provider.dart';
-import 'dart:io';
 import '../providers/publish_provider.dart';
 import '../providers/project_provider.dart';
 import '../providers/settings_provider.dart';
 import '../models/google_service_account.dart';
+import '../models/publish_history.dart';
 import '../utils/app_file_picker.dart';
 import '../utils/error_handler.dart';
 import 'ui/macos_polish.dart';
@@ -216,29 +216,10 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                 items: accounts.map((account) {
                   return MacosPopupMenuItem(
                     value: account.id,
-                    child: Row(
-                      children: [
-                        const Icon(CupertinoIcons.person_circle, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                account.name,
-                                style: const TextStyle(fontSize: 13),
-                              ),
-                              Text(
-                                account.email,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: MacosColors.secondaryLabelColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      '${account.name} (${account.email})',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13),
                     ),
                   );
                 }).toList(),
@@ -585,7 +566,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
           ),
           if (publish.status == PublishStatus.uploading) ...[
             const SizedBox(height: 12),
-            MacosProgressBar(value: publishProvider.uploadProgress),
+            ProgressBar(value: publishProvider.uploadProgress * 100),
             const SizedBox(height: 4),
             Text(
               '${(publishProvider.uploadProgress * 100).toInt()}% uploaded',

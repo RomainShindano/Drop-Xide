@@ -10,10 +10,25 @@ class AppFilePicker {
   }
 
   static Future<String?> pickJsonFile({String? confirmButtonText}) async {
+    return pickFile(fileExtension: 'json', confirmButtonText: confirmButtonText);
+  }
+
+  static Future<String?> pickFile({
+    String? dialogTitle,
+    String? fileExtension,
+    List<String>? extensions,
+    String? confirmButtonText,
+  }) async {
+    final allowed = <String>[
+      if (fileExtension != null && fileExtension.isNotEmpty) fileExtension,
+      ...?extensions,
+    ];
     final path = await _channel.invokeMethod<String>(
       'pickFile',
       <String, dynamic>{
-        'extensions': <String>['json'],
+        if (allowed.isNotEmpty) 'extensions': allowed,
+        'dialogTitle': ?dialogTitle,
+        'confirmButtonText': ?confirmButtonText,
       },
     );
     return path;
