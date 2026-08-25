@@ -16,6 +16,8 @@ DropXide is a **macOS desktop app**. Use the **macOS** workflow with
 2. **Release / Profile signing** — removed ad-hoc `CODE_SIGN_IDENTITY = "-"`, enabled Hardened Runtime
 3. **Bundle ID** — `com.oxidetech.dropXide` aligned in AppInfo
 4. **Release entitlements** — App Sandbox + network / file / Flutter runtime entitlements for Mac App Store
+5. **Removed `local_notifier`** — that plugin has no Swift Package Manager support and caused
+   `Unable to resolve module dependency: 'local_notifier'`. Notifications now use macOS `osascript`.
 
 ## Xcode Cloud workflow checklist
 
