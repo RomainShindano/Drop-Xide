@@ -571,6 +571,9 @@ class BuildService {
       logs: data['logs'] != null
           ? List<String>.from(jsonDecode(data['logs'] as String))
           : [],
+      buildNumber: data['build_number'] as int? ?? 1,
+      artifactPath: data['artifact_path'] as String?,
+      artifactSize: data['artifact_size'] as int?,
     );
   }
 
@@ -586,6 +589,9 @@ class BuildService {
       'output_path': build.outputPath,
       'error_message': build.errorMessage,
       'logs': jsonEncode(build.logs),
+      'build_number': build.buildNumber,
+      'artifact_path': build.artifactPath,
+      'artifact_size': build.artifactSize,
     };
   }
 
