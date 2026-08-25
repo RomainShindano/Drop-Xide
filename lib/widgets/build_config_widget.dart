@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/project_provider.dart';
 import '../providers/build_provider.dart';
 import '../models/flutter_project.dart';
+import '../services/git_service.dart';
 import 'ui/macos_polish.dart';
 import 'ui/sleek_button.dart';
 
@@ -19,14 +20,46 @@ class _BuildConfigWidgetState extends State<BuildConfigWidget> {
   BuildMode _selectedMode = BuildMode.release;
   BuildType _androidBuildType = BuildType.apk;
   String? _flavor;
+  String? _selectedBranch;
+  List<String> _availableBranches = [];
+  bool _loadingBranches = false;
   bool _obfuscate = false;
   bool _splitDebugInfo = false;
   final _logScrollController = ScrollController();
+  final _gitService = GitService();
 
   @override
   void dispose() {
     _logScrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadBranches(String projectPath) async {
+    setState(() => _loadingBranches = true);
+    try {
+      final isGitRepo = await _gitService.isGitRepository(projectPath);
+      if (isGitRepo) {
+        final branches = await _gitService.getAllBranches(projectPath);
+        final currentBranch = await _gitService.getCurrentBranch(projectPath);
+        setState(() {
+          _availableBranches = branches;
+          _selectedBranch = currentBranch;
+          _loadingBranches = false;
+        });
+      } else {
+        setState(() {
+          _availableBranches = [];
+          _selectedBranch = null;
+          _loadingBranches = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _availableBranches = [];
+        _selectedBranch = null;
+        _loadingBranches = false;
+      });
+    }
   }
 
   void _scrollLogsToEnd() {
@@ -46,6 +79,11 @@ class _BuildConfigWidgetState extends State<BuildConfigWidget> {
       builder: (context, projectProvider, buildProvider, child) {
         final selectedProject = projectProvider.selectedProject;
         final typography = MacosTheme.of(context).typography;
+
+        // Load branches when project changes
+        if (selectedProject != null && _availableBranches.isEmpty && !_loadingBranches) {
+          _loadBranches(selectedProject.path);
+        }
 
         if (buildProvider.logs.isNotEmpty) {
           _scrollLogsToEnd();
@@ -193,6 +231,31 @@ class _BuildConfigWidgetState extends State<BuildConfigWidget> {
                       children: [
                         Text('Advanced', style: typography.headline),
                         const SizedBox(height: 12),
+                        if (_availableBranches.isNotEmpty) ...[
+                          Text('Git Branch', style: typography.body.copyWith(
+                            fontWeight: FontWeight.w500,
+                          )),
+                          const SizedBox(height: 8),
+                          MacosPopupButton<String>(
+                            value: _selectedBranch,
+                            onChanged: (value) {
+                              setState(() => _selectedBranch = value);
+                            },
+                            items: [
+                              const MacosPopupMenuItem(
+                                value: null,
+                                child: Text('Current branch'),
+                              ),
+                              ..._availableBranches.map(
+                                (branch) => MacosPopupMenuItem(
+                                  value: branch,
+                                  child: Text(branch),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         MacosTextField(
                           placeholder: 'Flavor (optional)',
                           onChanged: (value) {
@@ -337,6 +400,7 @@ class _BuildConfigWidgetState extends State<BuildConfigWidget> {
           ? _androidBuildType
           : null,
       flavor: _flavor,
+      branch: _selectedBranch,
       obfuscate: _obfuscate,
       splitDebugInfo: _splitDebugInfo || _obfuscate,
     );
