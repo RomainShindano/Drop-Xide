@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import 'package:macos_ui/macos_ui.dart';
@@ -10,10 +12,12 @@ import 'ui/sleek_button.dart';
 
 class ProjectDetailsWidget extends StatefulWidget {
   final VoidCallback? onAddProject;
+  final VoidCallback? onOpenBuild;
 
   const ProjectDetailsWidget({
     super.key,
     this.onAddProject,
+    this.onOpenBuild,
   });
 
   @override
@@ -22,6 +26,7 @@ class ProjectDetailsWidget extends StatefulWidget {
 
 class _ProjectDetailsWidgetState extends State<ProjectDetailsWidget> {
   final _gitService = GitService();
+  String? _loadedPath;
   bool _isGitRepo = false;
   String? _currentBranch;
   List<String> _branches = [];
@@ -38,37 +43,56 @@ class _ProjectDetailsWidgetState extends State<ProjectDetailsWidget> {
           return EmptyState(
             icon: CupertinoIcons.folder_badge_plus,
             title: 'No project selected',
-            message: 'Select a project from the dropdown above or add a new Flutter project.',
+            message:
+                'Choose a project from the toolbar, or add a Flutter project to get started.',
             actionLabel: 'Add Project',
             onAction: widget.onAddProject,
           );
         }
 
-        // Load Git info when project changes
-        if (!_loadingGitInfo) {
-          _loadGitInfo(selectedProject.path);
+        if (_loadedPath != selectedProject.path && !_loadingGitInfo) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _loadGitInfo(selectedProject.path);
+          });
         }
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(28, 16, 28, 36),
+          padding: const EdgeInsets.fromLTRB(28, 20, 28, 40),
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 900),
+              constraints: const BoxConstraints(maxWidth: 820),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _ProjectInfoSection(project: selectedProject),
+                  _ProjectHero(
+                    project: selectedProject,
+                    branch: _currentBranch,
+                    isGitRepo: _isGitRepo,
+                    loadingGit: _loadingGitInfo,
+                    onOpenBuild: widget.onOpenBuild,
+                    onRevealInFinder: () =>
+                        _revealInFinder(selectedProject.path),
+                  ),
+                  const SizedBox(height: 18),
+                  _MetaStrip(
+                    project: selectedProject,
+                    branchCount: _branches.length,
+                    isGitRepo: _isGitRepo,
+                  ),
                   if (_isGitRepo) ...[
-                    const SizedBox(height: 20),
-                    _GitInfoSection(
+                    const SizedBox(height: 28),
+                    _GitSection(
                       currentBranch: _currentBranch,
                       branches: _branches,
                       commits: _commits,
+                      loading: _loadingGitInfo,
                       onRefresh: () => _loadGitInfo(selectedProject.path),
                     ),
                   ],
-                  const SizedBox(height: 20),
-                  _BuildInfoSection(project: selectedProject),
+                  if (selectedProject.lastBuildConfig != null) ...[
+                    const SizedBox(height: 28),
+                    _LastBuildSection(config: selectedProject.lastBuildConfig!),
+                  ],
                 ],
               ),
             ),
@@ -79,348 +103,368 @@ class _ProjectDetailsWidgetState extends State<ProjectDetailsWidget> {
   }
 
   Future<void> _loadGitInfo(String projectPath) async {
-    setState(() => _loadingGitInfo = true);
+    setState(() {
+      _loadingGitInfo = true;
+      _loadedPath = projectPath;
+    });
     try {
       final isGit = await _gitService.isGitRepository(projectPath);
-      if (!mounted) return;
-      
-      setState(() => _isGitRepo = isGit);
+      if (!mounted || _loadedPath != projectPath) return;
 
-      if (isGit) {
-        final branch = await _gitService.getCurrentBranch(projectPath);
-        final branches = await _gitService.getAllBranches(projectPath);
-        final commits = await _gitService.getRecentCommits(projectPath, limit: 10);
-        
-        if (!mounted) return;
-        
+      if (!isGit) {
         setState(() {
-          _currentBranch = branch;
-          _branches = branches;
-          _commits = commits;
+          _isGitRepo = false;
+          _currentBranch = null;
+          _branches = [];
+          _commits = [];
         });
+        return;
       }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isGitRepo = false);
+
+      final branch = await _gitService.getCurrentBranch(projectPath);
+      final branches = await _gitService.getAllBranches(projectPath);
+      final commits =
+          await _gitService.getRecentCommits(projectPath, limit: 8);
+
+      if (!mounted || _loadedPath != projectPath) return;
+
+      setState(() {
+        _isGitRepo = true;
+        _currentBranch = branch;
+        _branches = branches;
+        _commits = commits;
+      });
+    } catch (_) {
+      if (!mounted || _loadedPath != projectPath) return;
+      setState(() {
+        _isGitRepo = false;
+        _currentBranch = null;
+        _branches = [];
+        _commits = [];
+      });
     } finally {
-      if (mounted) {
+      if (mounted && _loadedPath == projectPath) {
         setState(() => _loadingGitInfo = false);
       }
     }
   }
+
+  Future<void> _revealInFinder(String path) async {
+    await Process.run('open', [path]);
+  }
 }
 
-class _ProjectInfoSection extends StatelessWidget {
+class _ProjectHero extends StatelessWidget {
   final FlutterProject project;
+  final String? branch;
+  final bool isGitRepo;
+  final bool loadingGit;
+  final VoidCallback? onOpenBuild;
+  final VoidCallback onRevealInFinder;
 
-  const _ProjectInfoSection({required this.project});
+  const _ProjectHero({
+    required this.project,
+    required this.branch,
+    required this.isGitRepo,
+    required this.loadingGit,
+    required this.onOpenBuild,
+    required this.onRevealInFinder,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final typography = MacosTheme.of(context).typography;
+    final primary = MacosTheme.of(context).primaryColor;
+    final isDark = MacosTheme.brightnessOf(context) == Brightness.dark;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionHeader(
-          title: 'Project Information',
-          subtitle: 'Overview and metadata',
-        ),
-        SectionCard(
-          child: Column(
+    return SectionCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          MacosTheme.of(context).primaryColor,
-                          MacosTheme.of(context).primaryColor.withValues(alpha: 0.7),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Center(
-                      child: MacosIcon(
-                        CupertinoIcons.folder_fill,
-                        size: 22,
-                        color: CupertinoColors.white,
-                      ),
-                    ),
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      primary,
+                      primary.withValues(alpha: 0.72),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primary.withValues(alpha: isDark ? 0.35 : 0.22),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: MacosIcon(
+                    CupertinoIcons.folder_fill,
+                    size: 26,
+                    color: CupertinoColors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(project.name, style: context.dxHeadline),
+                    const SizedBox(height: 6),
+                    Text(
+                      project.path,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.dxCaption.copyWith(height: 1.35),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
-                        Text(
-                          project.name,
-                          style: typography.title1.copyWith(
-                            fontWeight: FontWeight.w700,
+                        if (loadingGit)
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: ProgressCircle(radius: 8),
+                          )
+                        else if (isGitRepo)
+                          StatusPill(
+                            label: branch ?? 'detached',
+                            color: primary,
+                          )
+                        else
+                          StatusPill(
+                            label: 'Not a Git repo',
+                            color: MacosColors.systemGrayColor,
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          project.path,
-                          style: typography.body.copyWith(
-                            color: MacosColors.secondaryLabelColor.resolveFrom(context),
+                        if (project.description != null &&
+                            project.description!.trim().isNotEmpty)
+                          StatusPill(
+                            label: 'Has notes',
+                            color: MacosColors.systemOrangeColor,
                           ),
-                        ),
                       ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 20),
-              _InfoRow(
-                label: 'Added',
-                value: _formatDate(project.addedAt),
-                icon: CupertinoIcons.calendar,
-              ),
-              if (project.lastBuildAt != null) ...[
-                const SizedBox(height: 12),
-                _InfoRow(
-                  label: 'Last Built',
-                  value: _formatDate(project.lastBuildAt!),
-                  icon: CupertinoIcons.hammer,
-                ),
-              ],
-              if (project.description != null) ...[
-                const SizedBox(height: 16),
-                Container(
-                  height: 1,
-                  color: MacosColors.separatorColor.withValues(alpha: 0.55),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Description',
-                  style: typography.headline.copyWith(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  project.description!,
-                  style: typography.body.copyWith(
-                    color: MacosColors.secondaryLabelColor.resolveFrom(context),
-                  ),
-                ),
-              ],
             ],
+          ),
+          if (project.description != null &&
+              project.description!.trim().isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              project.description!,
+              style: context.dxBody.copyWith(
+                color: context.dxSecondary,
+                height: 1.4,
+              ),
+            ),
+          ],
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              if (onOpenBuild != null)
+                SleekButton.label(
+                  label: 'Build',
+                  leadingIcon: CupertinoIcons.hammer_fill,
+                  onPressed: onOpenBuild,
+                ),
+              if (onOpenBuild != null) const SizedBox(width: 10),
+              SleekButton.label(
+                label: 'Reveal in Finder',
+                leadingIcon: CupertinoIcons.folder,
+                secondary: true,
+                onPressed: onRevealInFinder,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetaStrip extends StatelessWidget {
+  final FlutterProject project;
+  final int branchCount;
+  final bool isGitRepo;
+
+  const _MetaStrip({
+    required this.project,
+    required this.branchCount,
+    required this.isGitRepo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _MetaTile(
+            icon: CupertinoIcons.calendar,
+            label: 'Added',
+            value: DateFormat('MMM d, y').format(project.addedAt),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _MetaTile(
+            icon: CupertinoIcons.hammer,
+            label: 'Last build',
+            value: project.lastBuildAt == null
+                ? 'Never'
+                : DateFormat('MMM d, y').format(project.lastBuildAt!),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _MetaTile(
+            icon: CupertinoIcons.arrow_branch,
+            label: 'Branches',
+            value: isGitRepo ? '$branchCount' : '—',
           ),
         ),
       ],
     );
   }
+}
 
-  String _formatDate(DateTime date) {
-    return DateFormat('MMM d, y \'at\' h:mm a').format(date);
+class _MetaTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _MetaTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = MacosTheme.of(context).primaryColor;
+
+    return SectionCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: MacosIcon(icon, size: 15, color: primary),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: context.dxCaption),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.dxCallout.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
-class _GitInfoSection extends StatelessWidget {
+class _GitSection extends StatelessWidget {
   final String? currentBranch;
   final List<String> branches;
   final List<GitCommit> commits;
+  final bool loading;
   final VoidCallback onRefresh;
 
-  const _GitInfoSection({
+  const _GitSection({
     required this.currentBranch,
     required this.branches,
     required this.commits,
+    required this.loading,
     required this.onRefresh,
   });
 
   @override
   Widget build(BuildContext context) {
-    final typography = MacosTheme.of(context).typography;
+    final primary = MacosTheme.of(context).primaryColor;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeader(
-          title: 'Git Information',
-          subtitle: 'Branches and recent commits',
+          title: 'Git',
+          subtitle: currentBranch == null
+              ? 'Repository overview'
+              : 'On $currentBranch',
           trailing: SleekButton.label(
             label: 'Refresh',
             size: SleekButtonSize.small,
             secondary: true,
             leadingIcon: CupertinoIcons.refresh,
-            onPressed: onRefresh,
+            onPressed: loading ? null : onRefresh,
           ),
         ),
         SectionCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _InfoRow(
-                label: 'Current Branch',
-                value: currentBranch ?? 'Unknown',
-                icon: CupertinoIcons.arrow_branch,
-              ),
-              const SizedBox(height: 12),
-              _InfoRow(
-                label: 'Total Branches',
-                value: branches.length.toString(),
-                icon: CupertinoIcons.list_bullet,
-              ),
-              if (branches.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Container(
-                  height: 1,
-                  color: MacosColors.separatorColor.withValues(alpha: 0.55),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Branches',
-                  style: typography.headline.copyWith(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 12),
+              Text('Branches', style: context.dxSectionLabel),
+              const SizedBox(height: 10),
+              if (branches.isEmpty)
+                Text('No branches found', style: context.dxCaption)
+              else
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: branches.take(10).map((branch) {
-                    final isCurrent = branch == currentBranch;
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isCurrent
-                            ? MacosTheme.of(context).primaryColor.withValues(alpha: 0.15)
-                            : MacosColors.controlBackgroundColor.resolveFrom(context),
-                        borderRadius: BorderRadius.circular(6),
-                        border: isCurrent
-                            ? Border.all(
-                                color: MacosTheme.of(context).primaryColor.withValues(alpha: 0.3),
-                              )
-                            : null,
+                  children: [
+                    for (final branch in branches.take(12))
+                      _BranchChip(
+                        name: branch,
+                        selected: branch == currentBranch,
+                        color: primary,
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          MacosIcon(
-                            CupertinoIcons.arrow_branch,
-                            size: 12,
-                            color: isCurrent
-                                ? MacosTheme.of(context).primaryColor
-                                : MacosColors.secondaryLabelColor.resolveFrom(context),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            branch,
-                            style: typography.caption1.copyWith(
-                              color: isCurrent
-                                  ? MacosTheme.of(context).primaryColor
-                                  : MacosColors.labelColor.resolveFrom(context),
-                              fontWeight: isCurrent ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                          ),
-                        ],
+                    if (branches.length > 12)
+                      Text(
+                        '+${branches.length - 12} more',
+                        style: context.dxCaption,
                       ),
-                    );
-                  }).toList(),
+                  ],
                 ),
-                if (branches.length > 10)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      '+ ${branches.length - 10} more',
-                      style: typography.caption2.copyWith(
-                        color: MacosColors.secondaryLabelColor.resolveFrom(context),
-                      ),
-                    ),
-                  ),
-              ],
-            ],
-          ),
-        ),
-        if (commits.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Recent Commits',
-                  style: typography.headline.copyWith(fontWeight: FontWeight.w600),
+              if (commits.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                Container(
+                  height: 1,
+                  color: MacosColors.separatorColor.withValues(alpha: 0.45),
                 ),
                 const SizedBox(height: 16),
-                ...commits.map((commit) => Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: _CommitRow(commit: commit),
-                    )),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _BuildInfoSection extends StatelessWidget {
-  final FlutterProject project;
-
-  const _BuildInfoSection({required this.project});
-
-  @override
-  Widget build(BuildContext context) {
-    final typography = MacosTheme.of(context).typography;
-
-    if (project.lastBuildConfig == null) {
-      return const SizedBox.shrink();
-    }
-
-    final config = project.lastBuildConfig!;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SectionHeader(
-          title: 'Last Build Configuration',
-          subtitle: 'Most recent build settings',
-        ),
-        SectionCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _InfoRow(
-                label: 'Platform',
-                value: config.platform.name.toUpperCase(),
-                icon: CupertinoIcons.device_phone_portrait,
-              ),
-              const SizedBox(height: 12),
-              _InfoRow(
-                label: 'Mode',
-                value: config.mode.name.toUpperCase(),
-                icon: CupertinoIcons.speedometer,
-              ),
-              if (config.buildType != null) ...[
+                Text('Recent commits', style: context.dxSectionLabel),
                 const SizedBox(height: 12),
-                _InfoRow(
-                  label: 'Build Type',
-                  value: config.buildType!.name.toUpperCase(),
-                  icon: CupertinoIcons.cube_box,
-                ),
-              ],
-              if (config.flavor != null) ...[
-                const SizedBox(height: 12),
-                _InfoRow(
-                  label: 'Flavor',
-                  value: config.flavor!,
-                  icon: CupertinoIcons.tag,
-                ),
-              ],
-              if (config.branch != null) ...[
-                const SizedBox(height: 12),
-                _InfoRow(
-                  label: 'Branch',
-                  value: config.branch!,
-                  icon: CupertinoIcons.arrow_branch,
-                ),
+                for (var i = 0; i < commits.length; i++) ...[
+                  _CommitRow(commit: commits[i], isLast: i == commits.length - 1),
+                ],
               ],
             ],
           ),
@@ -430,144 +474,214 @@ class _BuildInfoSection extends StatelessWidget {
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
+class _BranchChip extends StatelessWidget {
+  final String name;
+  final bool selected;
+  final Color color;
 
-  const _InfoRow({
-    required this.label,
-    required this.value,
-    required this.icon,
+  const _BranchChip({
+    required this.name,
+    required this.selected,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final typography = MacosTheme.of(context).typography;
-
-    return Row(
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: MacosTheme.of(context).primaryColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(7),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: selected
+            ? color.withValues(alpha: 0.16)
+            : MacosColors.controlBackgroundColor.resolveFrom(context),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: selected
+              ? color.withValues(alpha: 0.35)
+              : MacosColors.separatorColor.withValues(alpha: 0.45),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          MacosIcon(
+            CupertinoIcons.arrow_branch,
+            size: 11,
+            color: selected ? color : context.dxSecondary,
           ),
-          child: Center(
-            child: MacosIcon(
-              icon,
-              size: 14,
-              color: MacosTheme.of(context).primaryColor,
+          const SizedBox(width: 6),
+          Text(
+            name,
+            style: context.dxCaption.copyWith(
+              color: selected ? color : context.dxLabel,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: typography.caption1.copyWith(
-                  color: MacosColors.secondaryLabelColor.resolveFrom(context),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: typography.headline.copyWith(fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
 class _CommitRow extends StatelessWidget {
   final GitCommit commit;
+  final bool isLast;
 
-  const _CommitRow({required this.commit});
+  const _CommitRow({required this.commit, required this.isLast});
 
   @override
   Widget build(BuildContext context) {
-    final typography = MacosTheme.of(context).typography;
-    final secondary = MacosColors.secondaryLabelColor.resolveFrom(context);
+    final primary = MacosTheme.of(context).primaryColor;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          margin: const EdgeInsets.only(top: 6),
-          decoration: BoxDecoration(
-            color: MacosTheme.of(context).primaryColor,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
             children: [
-              Text(
-                commit.message,
-                style: typography.body.copyWith(fontWeight: FontWeight.w500),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Text(
-                    commit.hash.substring(0, 7),
-                    style: typography.caption2.copyWith(
-                      color: secondary,
-                      fontFamily: 'Menlo',
+              Container(
+                width: 10,
+                height: 10,
+                margin: const EdgeInsets.only(top: 4),
+                decoration: BoxDecoration(
+                  color: primary,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: primary.withValues(alpha: 0.35),
+                      blurRadius: 6,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '•',
-                    style: typography.caption2.copyWith(color: secondary),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    commit.author,
-                    style: typography.caption2.copyWith(color: secondary),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '•',
-                    style: typography.caption2.copyWith(color: secondary),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _formatDate(commit.date),
-                    style: typography.caption2.copyWith(color: secondary),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              if (!isLast)
+                Container(
+                  width: 1.5,
+                  height: 36,
+                  margin: const EdgeInsets.only(top: 4),
+                  color: MacosColors.separatorColor.withValues(alpha: 0.5),
+                ),
             ],
           ),
-        ),
-      ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  commit.message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.dxCallout.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${commit.hash.substring(0, 7)}  ·  ${commit.author}  ·  ${_formatDate(commit.date)}',
+                  style: context.dxCaption.copyWith(fontFamily: 'Menlo'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   String _formatDate(DateTime date) {
     final difference = DateTime.now().difference(date);
     if (difference.inDays == 0) {
-      if (difference.inHours == 0) {
-        return '${difference.inMinutes}m ago';
-      }
+      if (difference.inHours == 0) return '${difference.inMinutes}m ago';
       return '${difference.inHours}h ago';
     }
     if (difference.inDays == 1) return 'yesterday';
     if (difference.inDays < 7) return '${difference.inDays}d ago';
     return DateFormat('MMM d').format(date);
+  }
+}
+
+class _LastBuildSection extends StatelessWidget {
+  final BuildConfig config;
+
+  const _LastBuildSection({required this.config});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader(
+          title: 'Last build',
+          subtitle: 'Most recent configuration used for this project',
+        ),
+        SectionCard(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _ConfigChip(
+                icon: CupertinoIcons.device_phone_portrait,
+                label: config.platform.name.toUpperCase(),
+              ),
+              _ConfigChip(
+                icon: CupertinoIcons.speedometer,
+                label: config.mode.name.toUpperCase(),
+              ),
+              if (config.buildType != null)
+                _ConfigChip(
+                  icon: CupertinoIcons.cube_box,
+                  label: config.buildType!.name.toUpperCase(),
+                ),
+              if (config.flavor != null)
+                _ConfigChip(
+                  icon: CupertinoIcons.tag,
+                  label: config.flavor!,
+                ),
+              if (config.branch != null)
+                _ConfigChip(
+                  icon: CupertinoIcons.arrow_branch,
+                  label: config.branch!,
+                ),
+              if (config.obfuscate)
+                const _ConfigChip(
+                  icon: CupertinoIcons.lock_fill,
+                  label: 'Obfuscated',
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ConfigChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _ConfigChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: MacosColors.systemGrayColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: context.dxSecondary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: context.dxCaption.copyWith(
+              color: context.dxLabel,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

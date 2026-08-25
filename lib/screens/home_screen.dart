@@ -202,90 +202,52 @@ class _ProjectsPage extends StatelessWidget {
 
         return MacosScaffold(
           toolBar: ToolBar(
-            title: Text('Project Details', style: MacosTheme.of(context).typography.headline),
-            titleWidth: 140,
-            leading: CustomToolbarItem(
-              inToolbarBuilder: (context) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: SizedBox(
-                  width: 220,
-                  child: projects.isEmpty
-                      ? MacosTooltip(
-                          message: 'No projects yet. Click + to add one.',
-                          child: Container(
-                            height: 26,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            decoration: BoxDecoration(
-                              color: MacosColors.controlBackgroundColor
-                                  .resolveFrom(context),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: MacosColors.separatorColor
-                                    .resolveFrom(context),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                MacosIcon(
-                                  CupertinoIcons.folder,
-                                  size: 14,
-                                  color: MacosColors.secondaryLabelColor
-                                      .resolveFrom(context),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'No projects',
-                                    style: MacosTheme.of(context)
-                                        .typography
-                                        .body
-                                        .copyWith(
-                                          color: MacosColors.secondaryLabelColor
-                                              .resolveFrom(context),
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : MacosPopupButton<String?>(
-                          value: selectedProject?.id,
+            title: Text(
+              'Projects',
+              style: MacosTheme.of(context).typography.headline,
+            ),
+            titleWidth: 100,
+            actions: [
+              if (projects.isNotEmpty)
+                CustomToolbarItem(
+                  inToolbarBuilder: (context) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: SizedBox(
+                        width: 240,
+                        child: MacosPopupButton<String>(
+                          value: selectedProject?.id ?? projects.first.id,
                           onChanged: (projectId) {
-                            if (projectId != null) {
-                              final project = projects.firstWhere(
-                                (p) => p.id == projectId,
-                              );
-                              projectProvider.selectProject(project);
-                            }
+                            if (projectId == null) return;
+                            final project = projects.firstWhere(
+                              (p) => p.id == projectId,
+                            );
+                            projectProvider.selectProject(project);
                           },
                           items: projects
                               .map(
                                 (project) => MacosPopupMenuItem(
                                   value: project.id,
-                                  child: Row(
-                                    children: [
-                                      const MacosIcon(
-                                        CupertinoIcons.folder,
-                                        size: 14,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          project.name,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
+                                  child: Text(
+                                    project.name,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               )
                               .toList(),
                         ),
+                      ),
+                    );
+                  },
                 ),
-              ),
-            ),
-            actions: [
+              if (selectedProject != null)
+                ToolBarIconButton(
+                  label: 'Build',
+                  icon: const MacosIcon(CupertinoIcons.hammer),
+                  onPressed: onOpenBuild,
+                  showLabel: false,
+                  tooltipMessage: 'Open Build',
+                ),
               ToolBarIconButton(
                 label: 'Add Project',
                 icon: const MacosIcon(CupertinoIcons.add),
@@ -312,7 +274,7 @@ class _ProjectsPage extends StatelessWidget {
                 if (projectProvider.error != null) {
                   return EmptyState(
                     icon: CupertinoIcons.exclamationmark_circle,
-                    title: 'Couldn't load projects',
+                    title: "Couldn't load projects",
                     message: projectProvider.error!,
                     actionLabel: 'Retry',
                     onAction: projectProvider.loadProjects,
@@ -330,8 +292,16 @@ class _ProjectsPage extends StatelessWidget {
                   );
                 }
 
+                if (selectedProject == null) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    projectProvider.selectProject(projects.first);
+                  });
+                  return const Center(child: ProgressCircle());
+                }
+
                 return ProjectDetailsWidget(
                   onAddProject: onAddProject,
+                  onOpenBuild: onOpenBuild,
                 );
               },
             ),
