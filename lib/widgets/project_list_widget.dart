@@ -191,7 +191,7 @@ class _ProjectRow extends StatelessWidget {
                   Text(
                     project.name,
                     style: typography.headline.copyWith(
-                      color: isSelected ? primary : null,
+                      color: isSelected ? primary : context.dxLabel,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

@@ -53,6 +53,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
 
         if (selectedProject == null) {
           return _buildEmptyState(
+            context,
             icon: CupertinoIcons.square_stack_3d_up,
             title: 'No Project Selected',
             subtitle: 'Select a project from the Projects tab to publish',
@@ -61,6 +62,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
 
         if (accounts.isEmpty) {
           return _buildEmptyState(
+            context,
             icon: CupertinoIcons.exclamationmark_triangle,
             title: 'No Service Account',
             subtitle:
@@ -80,7 +82,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildProjectInfo(selectedProject.name),
+                    _buildProjectInfo(context, selectedProject.name),
                     const SizedBox(height: 24),
                     _buildServiceAccountSection(accounts),
                     const SizedBox(height: 16),
@@ -112,7 +114,8 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
     );
   }
 
-  Widget _buildEmptyState({
+  Widget _buildEmptyState(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String subtitle,
@@ -124,15 +127,12 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
         children: [
           Icon(icon, size: 80, color: MacosColors.systemGrayColor),
           const SizedBox(height: 20),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
+          Text(title, style: context.dxHeadline),
           const SizedBox(height: 10),
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: MacosColors.systemGrayColor),
+            style: context.dxCaption,
           ),
           if (action != null) ...[
             const SizedBox(height: 20),
@@ -146,7 +146,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
     );
   }
 
-  Widget _buildProjectInfo(String projectName) {
+  Widget _buildProjectInfo(BuildContext context, String projectName) {
     return SectionCard(
       child: Row(
         children: [
@@ -170,21 +170,9 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Publishing',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: MacosColors.secondaryLabelColor,
-                  ),
-                ),
+                Text('Publishing', style: context.dxCaption),
                 const SizedBox(height: 2),
-                Text(
-                  projectName,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(projectName, style: context.dxTitle),
               ],
             ),
           ),
@@ -219,7 +207,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                     child: Text(
                       '${account.name} (${account.email})',
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13),
+                      style: context.dxCallout,
                     ),
                   );
                 }).toList(),
@@ -252,7 +240,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                     Expanded(
                       child: Text(
                         _selectedAabPath!.split('/').last,
-                        style: const TextStyle(fontSize: 13),
+                        style: context.dxCallout,
                       ),
                     ),
                     MacosIconButton(
@@ -269,10 +257,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                 const SizedBox(height: 8),
                 Text(
                   _selectedAabPath!,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: MacosColors.secondaryLabelColor,
-                  ),
+                  style: context.dxCaption,
                 ),
                 const SizedBox(height: 12),
               ],
@@ -304,7 +289,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
               MacosTextField(
                 controller: _packageNameController,
                 placeholder: 'com.example.app',
-                prefix: const Text('Package Name'),
+                prefix: Text('Package Name', style: context.dxFieldPrefix),
               ),
               const SizedBox(height: 12),
               Row(
@@ -313,7 +298,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                     child: MacosTextField(
                       controller: _versionNameController,
                       placeholder: '1.0.0',
-                      prefix: const Text('Version Name'),
+                      prefix: Text('Version Name', style: context.dxFieldPrefix),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -321,7 +306,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                     child: MacosTextField(
                       controller: _versionCodeController,
                       placeholder: '1',
-                      prefix: const Text('Version Code'),
+                      prefix: Text('Version Code', style: context.dxFieldPrefix),
                     ),
                   ),
                 ],
@@ -386,8 +371,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                               children: [
                                 Text(
                                   _getTrackLabel(track),
-                                  style: TextStyle(
-                                    fontSize: 14,
+                                  style: context.dxCallout.copyWith(
                                     fontWeight: isSelected
                                         ? FontWeight.w600
                                         : FontWeight.normal,
@@ -395,10 +379,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                                 ),
                                 Text(
                                   _getTrackDescription(track),
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: MacosColors.secondaryLabelColor,
-                                  ),
+                                  style: context.dxCaption,
                                 ),
                               ],
                             ),
@@ -422,7 +403,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                       },
                     ),
                     const SizedBox(width: 8),
-                    const Text('Use staged rollout'),
+                    Text('Use staged rollout', style: context.dxCallout),
                   ],
                 ),
                 if (_useStagedRollout) ...[
@@ -447,8 +428,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                         child: Text(
                           '${_rolloutPercentage.toInt()}%',
                           textAlign: TextAlign.right,
-                          style: const TextStyle(
-                            fontSize: 14,
+                          style: context.dxCallout.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -482,12 +462,9 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
                 maxLines: 6,
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'English (US) - Maximum 500 characters',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: MacosColors.secondaryLabelColor,
-                ),
+                style: context.dxCaption,
               ),
             ],
           ),
@@ -570,10 +547,7 @@ class _GooglePlayPublishWidgetState extends State<GooglePlayPublishWidget> {
             const SizedBox(height: 4),
             Text(
               '${(publishProvider.uploadProgress * 100).toInt()}% uploaded',
-              style: const TextStyle(
-                fontSize: 11,
-                color: MacosColors.secondaryLabelColor,
-              ),
+              style: context.dxCaption,
             ),
           ],
         ],

@@ -26,7 +26,7 @@ class PublishHistoryWidget extends StatelessWidget {
                 const Icon(CupertinoIcons.exclamationmark_triangle,
                     size: 64, color: MacosColors.systemRedColor),
                 const SizedBox(height: 16),
-                Text('Error: ${provider.error}'),
+                Text('Error: ${provider.error}', style: context.dxBody),
                 const SizedBox(height: 16),
                 PushButton(
                   controlSize: ControlSize.large,
@@ -49,14 +49,11 @@ class PublishHistoryWidget extends StatelessWidget {
                   color: MacosColors.systemGrayColor.withValues(alpha: 0.5),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'No Publish History',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
+                Text('No Publish History', style: context.dxHeadline),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   'Your Google Play Store publish history will appear here',
-                  style: TextStyle(color: MacosColors.secondaryLabelColor),
+                  style: context.dxCaption,
                 ),
               ],
             ),
@@ -98,21 +95,9 @@ class _PublishHistoryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      publish.projectName,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    Text(publish.projectName, style: context.dxTitle),
                     const SizedBox(height: 2),
-                    Text(
-                      publish.packageName,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: MacosColors.secondaryLabelColor,
-                      ),
-                    ),
+                    Text(publish.packageName, style: context.dxCaption),
                   ],
                 ),
               ),
@@ -160,23 +145,17 @@ class _PublishHistoryCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
+                  Row(
                     children: [
-                      Icon(CupertinoIcons.doc_text, size: 14),
-                      SizedBox(width: 4),
-                      Text(
-                        'Release Notes',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      Icon(CupertinoIcons.doc_text, size: 14, color: context.dxSecondary),
+                      const SizedBox(width: 4),
+                      Text('Release Notes', style: context.dxSectionLabel),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
                     publish.releaseNotes['en-US']!,
-                    style: const TextStyle(fontSize: 12),
+                    style: context.dxCaption,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -355,15 +334,9 @@ class _InfoChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: MacosColors.secondaryLabelColor),
+          Icon(icon, size: 14, color: context.dxSecondary),
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: MacosColors.secondaryLabelColor,
-            ),
-          ),
+          Text(label, style: context.dxCaption),
         ],
       ),
     );

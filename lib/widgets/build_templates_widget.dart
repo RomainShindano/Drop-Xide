@@ -68,20 +68,12 @@ class BuildTemplatesWidget extends StatelessWidget {
                       color: MacosColors.systemGrayColor.withValues(alpha: 0.5),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'No Templates Yet',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    Text('No Templates Yet', style: context.dxTitle),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Save build configurations as templates for quick access',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: MacosColors.secondaryLabelColor,
-                      ),
+                      style: context.dxCaption,
                     ),
                   ],
                 ),
@@ -122,13 +114,11 @@ class BuildTemplatesWidget extends StatelessWidget {
         message: Text('Are you sure you want to delete "${template.name}"?'),
         primaryButton: PushButton(
           controlSize: ControlSize.large,
-          buttonSize: ButtonSize.large,
           onPressed: () => Navigator.pop(context, true),
           child: const Text('Delete'),
         ),
         secondaryButton: PushButton(
           controlSize: ControlSize.large,
-          buttonSize: ButtonSize.large,
           secondary: true,
           onPressed: () => Navigator.pop(context, false),
           child: const Text('Cancel'),
@@ -177,13 +167,7 @@ class _TemplateCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            template.name,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          Text(template.name, style: context.dxTitle),
                           if (template.isFavorite) ...[
                             const SizedBox(width: 8),
                             const Icon(
@@ -198,10 +182,7 @@ class _TemplateCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           template.description!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: MacosColors.secondaryLabelColor,
-                          ),
+                          style: context.dxCaption,
                         ),
                       ],
                     ],
@@ -307,10 +288,7 @@ class _InfoChip extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 11,
-              color: MacosColors.secondaryLabelColor,
-            ),
+            style: context.dxCaption,
           ),
         ],
       ),

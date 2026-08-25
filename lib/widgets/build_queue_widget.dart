@@ -37,14 +37,7 @@ class BuildQueueWidget extends StatelessWidget {
             ),
             if (runningBuilds.isNotEmpty) ...[
               const SizedBox(height: 16),
-              const Text(
-                'Running Builds',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: MacosColors.secondaryLabelColor,
-                ),
-              ),
+              Text('Running Builds', style: context.dxSectionLabel),
               const SizedBox(height: 8),
               ...runningBuilds.map((item) => _QueueItemCard(
                     item: item,
@@ -55,14 +48,7 @@ class BuildQueueWidget extends StatelessWidget {
             ],
             if (queueItems.isNotEmpty) ...[
               const SizedBox(height: 16),
-              const Text(
-                'Queued Builds',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: MacosColors.secondaryLabelColor,
-                ),
-              ),
+              Text('Queued Builds', style: context.dxSectionLabel),
               const SizedBox(height: 8),
               ...queueItems.map((item) => _QueueItemCard(
                     item: item,
@@ -83,20 +69,12 @@ class BuildQueueWidget extends StatelessWidget {
                       color: MacosColors.systemGrayColor.withValues(alpha: 0.5),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Queue is Empty',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    Text('Queue is Empty', style: context.dxTitle),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Queue builds to run them automatically',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: MacosColors.secondaryLabelColor,
-                      ),
+                      style: context.dxCaption,
                     ),
                   ],
                 ),
@@ -138,20 +116,11 @@ class _QueueItemCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        item.projectName,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      Text(item.projectName, style: context.dxTitle),
                       const SizedBox(height: 2),
                       Text(
                         '${item.buildConfig.platform.name} - ${item.buildConfig.mode.name}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: MacosColors.secondaryLabelColor,
-                        ),
+                        style: context.dxCaption,
                       ),
                     ],
                   ),
@@ -159,7 +128,9 @@ class _QueueItemCard extends StatelessWidget {
                 if (!isRunning && onPriorityChange != null)
                   MacosPopupButton<int>(
                     value: item.priority,
-                    onChanged: onPriorityChange,
+                    onChanged: (value) {
+                      if (value != null) onPriorityChange!(value);
+                    },
                     items: [
                       MacosPopupMenuItem(
                         value: 0,
@@ -229,7 +200,7 @@ class _QueueItemCard extends StatelessWidget {
             ),
             if (isRunning) ...[
               const SizedBox(height: 12),
-              const MacosProgressBar(),
+              const Center(child: ProgressCircle(radius: 8)),
             ],
           ],
         ),
@@ -317,14 +288,13 @@ class _ConcurrentBuildsSetting extends StatelessWidget {
         children: [
           const Icon(CupertinoIcons.slider_horizontal_3, size: 14),
           const SizedBox(width: 8),
-          const Text(
-            'Concurrent:',
-            style: TextStyle(fontSize: 12),
-          ),
+          Text('Concurrent:', style: context.dxCaption),
           const SizedBox(width: 8),
           MacosPopupButton<int>(
             value: current,
-            onChanged: onChanged,
+            onChanged: (value) {
+              if (value != null) onChanged(value);
+            },
             items: List.generate(10, (i) => i + 1)
                 .map((n) => MacosPopupMenuItem(
                       value: n,
@@ -362,10 +332,7 @@ class _InfoChip extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 11,
-              color: MacosColors.secondaryLabelColor,
-            ),
+            style: context.dxCaption,
           ),
         ],
       ),

@@ -86,19 +86,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         builder: (context, scrollController) {
+          final sidebarText = MacosTheme.of(context).typography.body;
           return SidebarItems(
             currentIndex: _pageIndex,
             onChanged: _goTo,
             scrollController: scrollController,
             itemSize: SidebarItemSize.medium,
             items: [
-              const SidebarItem(
-                leading: MacosIcon(CupertinoIcons.folder),
-                label: Text('Projects'),
+              SidebarItem(
+                leading: const MacosIcon(CupertinoIcons.folder),
+                label: Text('Projects', style: sidebarText),
               ),
               SidebarItem(
                 leading: const MacosIcon(CupertinoIcons.hammer),
-                label: const Text('Build'),
+                label: Text('Build', style: sidebarText),
                 trailing: isBuilding
                     ? const Padding(
                         padding: EdgeInsets.only(right: 4),
@@ -106,13 +107,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       )
                     : null,
               ),
-              const SidebarItem(
-                leading: MacosIcon(CupertinoIcons.doc_text),
-                label: Text('Logs'),
+              SidebarItem(
+                leading: const MacosIcon(CupertinoIcons.doc_text),
+                label: Text('Logs', style: sidebarText),
               ),
               SidebarItem(
                 leading: const MacosIcon(CupertinoIcons.cloud_upload),
-                label: const Text('Publish'),
+                label: Text('Publish', style: sidebarText),
                 trailing: isPublishing
                     ? const Padding(
                         padding: EdgeInsets.only(right: 4),
@@ -120,13 +121,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       )
                     : null,
               ),
-              const SidebarItem(
-                leading: MacosIcon(CupertinoIcons.time),
-                label: Text('Publish History'),
+              SidebarItem(
+                leading: const MacosIcon(CupertinoIcons.time),
+                label: Text('Publish History', style: sidebarText),
               ),
-              const SidebarItem(
-                leading: MacosIcon(CupertinoIcons.settings),
-                label: Text('Settings'),
+              SidebarItem(
+                leading: const MacosIcon(CupertinoIcons.settings),
+                label: Text('Settings', style: sidebarText),
               ),
             ],
           );
@@ -230,7 +231,7 @@ class _ProjectsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return MacosScaffold(
       toolBar: ToolBar(
-        title: const Text('Projects'),
+        title: Text('Projects', style: MacosTheme.of(context).typography.headline),
         titleWidth: 120,
         actions: [
           ToolBarIconButton(
@@ -275,7 +276,7 @@ class _BuildPage extends StatelessWidget {
 
     return MacosScaffold(
       toolBar: ToolBar(
-        title: const Text('Build'),
+        title: Text('Build', style: MacosTheme.of(context).typography.headline),
         titleWidth: 100,
         actions: [
           if (isBuilding || status == BuildStatus.running)
@@ -317,7 +318,7 @@ class _HistoryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return MacosScaffold(
       toolBar: ToolBar(
-        title: const Text('Logs'),
+        title: Text('Logs', style: MacosTheme.of(context).typography.headline),
         titleWidth: 80,
         actions: [
           ToolBarIconButton(
@@ -347,7 +348,7 @@ class _SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return MacosScaffold(
       toolBar: ToolBar(
-        title: const Text('Settings'),
+        title: Text('Settings', style: MacosTheme.of(context).typography.headline),
         titleWidth: 100,
         actions: [
           ToolBarIconButton(
@@ -383,7 +384,10 @@ class _PublishPage extends StatelessWidget {
 
     return MacosScaffold(
       toolBar: ToolBar(
-        title: const Text('Publish to Play Store'),
+        title: Text(
+          'Publish to Play Store',
+          style: MacosTheme.of(context).typography.headline,
+        ),
         titleWidth: 180,
         actions: [
           if (isPublishing)
@@ -425,7 +429,10 @@ class _PublishHistoryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return MacosScaffold(
       toolBar: ToolBar(
-        title: const Text('Publish History'),
+        title: Text(
+          'Publish History',
+          style: MacosTheme.of(context).typography.headline,
+        ),
         titleWidth: 140,
         actions: [
           ToolBarIconButton(

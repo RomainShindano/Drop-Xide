@@ -69,6 +69,7 @@ class SettingsWidget extends StatelessWidget {
                                       : 'Flutter not found',
                                   style: typography.headline.copyWith(
                                     fontWeight: FontWeight.w600,
+                                    color: context.dxLabel,
                                   ),
                                 ),
                                 const SizedBox(height: 4),

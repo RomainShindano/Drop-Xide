@@ -2,6 +2,38 @@ import 'package:flutter/cupertino.dart';
 import 'package:macos_ui/macos_ui.dart';
 import 'sleek_button.dart';
 
+/// Theme-aware text helpers for DropXide (fixes black-on-dark text).
+extension DropXideTheme on BuildContext {
+  MacosTypography get dxTypography => MacosTheme.of(this).typography;
+
+  Color get dxLabel => MacosColors.labelColor.resolveFrom(this);
+
+  Color get dxSecondary => MacosColors.secondaryLabelColor.resolveFrom(this);
+
+  TextStyle get dxTitle => dxTypography.title3.copyWith(
+        fontWeight: FontWeight.w600,
+        color: dxLabel,
+      );
+
+  TextStyle get dxHeadline => dxTypography.title2.copyWith(
+        fontWeight: FontWeight.bold,
+        color: dxLabel,
+      );
+
+  TextStyle get dxBody => dxTypography.body.copyWith(color: dxLabel);
+
+  TextStyle get dxCallout => dxTypography.callout.copyWith(color: dxLabel);
+
+  TextStyle get dxCaption => dxTypography.caption1.copyWith(color: dxSecondary);
+
+  TextStyle get dxSectionLabel => dxTypography.footnote.copyWith(
+        fontWeight: FontWeight.w600,
+        color: dxSecondary,
+      );
+
+  TextStyle get dxFieldPrefix => dxTypography.footnote.copyWith(color: dxSecondary);
+}
+
 class EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -111,7 +143,18 @@ class SectionCard extends StatelessWidget {
                 ),
               ],
       ),
-      child: child,
+      child: DefaultTextStyle(
+        style: MacosTheme.of(context).typography.body.copyWith(
+              color: MacosColors.labelColor.resolveFrom(context),
+            ),
+        child: IconTheme(
+          data: IconThemeData(
+            color: MacosColors.labelColor.resolveFrom(context),
+            size: 16,
+          ),
+          child: child,
+        ),
+      ),
     );
   }
 }

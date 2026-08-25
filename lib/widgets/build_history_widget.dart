@@ -253,6 +253,7 @@ class _HistoryRow extends StatelessWidget {
                             history.projectName,
                             style: typography.headline.copyWith(
                               fontWeight: FontWeight.w600,
+                              color: context.dxLabel,
                             ),
                           ),
                           const SizedBox(height: 2),
