@@ -204,13 +204,52 @@ class _ProjectsPage extends StatelessWidget {
           toolBar: ToolBar(
             title: Text('Project Details', style: MacosTheme.of(context).typography.headline),
             titleWidth: 140,
-            leading: projects.isNotEmpty
-                ? CustomToolbarItem(
-                    inToolbarBuilder: (context) => Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: SizedBox(
-                        width: 220,
-                        child: MacosPopupButton<String?>(
+            leading: CustomToolbarItem(
+              inToolbarBuilder: (context) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: SizedBox(
+                  width: 220,
+                  child: projects.isEmpty
+                      ? MacosTooltip(
+                          message: 'No projects yet. Click + to add one.',
+                          child: Container(
+                            height: 26,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: MacosColors.controlBackgroundColor
+                                  .resolveFrom(context),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: MacosColors.separatorColor
+                                    .resolveFrom(context),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                MacosIcon(
+                                  CupertinoIcons.folder,
+                                  size: 14,
+                                  color: MacosColors.secondaryLabelColor
+                                      .resolveFrom(context),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'No projects',
+                                    style: MacosTheme.of(context)
+                                        .typography
+                                        .body
+                                        .copyWith(
+                                          color: MacosColors.secondaryLabelColor
+                                              .resolveFrom(context),
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : MacosPopupButton<String?>(
                           value: selectedProject?.id,
                           onChanged: (projectId) {
                             if (projectId != null) {
@@ -243,10 +282,9 @@ class _ProjectsPage extends StatelessWidget {
                               )
                               .toList(),
                         ),
-                      ),
-                    ),
-                  )
-                : null,
+                ),
+              ),
+            ),
             actions: [
               ToolBarIconButton(
                 label: 'Add Project',
