@@ -7,8 +7,8 @@
 // The application's name. By default this is also the title of the Flutter window.
 PRODUCT_NAME = DropXide
 
-// The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.dropXide
+// The application's bundle identifier (must match App Store Connect)
+PRODUCT_BUNDLE_IDENTIFIER = com.oxidetech.dropXide
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Oxide Tech. All rights reserved.
