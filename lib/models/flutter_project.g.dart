@@ -31,7 +31,7 @@ Map<String, dynamic> _$FlutterProjectToJson(FlutterProject instance) =>
       'description': instance.description,
       'addedAt': instance.addedAt.toIso8601String(),
       'lastBuildAt': instance.lastBuildAt?.toIso8601String(),
-      'lastBuildConfig': instance.lastBuildConfig,
+      'lastBuildConfig': instance.lastBuildConfig?.toJson(),
     };
 
 BuildConfig _$BuildConfigFromJson(Map<String, dynamic> json) => BuildConfig(

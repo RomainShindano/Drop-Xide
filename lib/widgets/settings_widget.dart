@@ -35,61 +35,120 @@ class SettingsWidget extends StatelessWidget {
                       subtitle: 'Required to run builds from Drop-Xide',
                     ),
                     SectionCard(
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: (flutterOk
-                                      ? MacosColors.systemGreenColor
-                                      : MacosColors.systemRedColor)
-                                  .withValues(alpha: 0.14),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Center(
-                              child: MacosIcon(
-                                flutterOk
-                                    ? CupertinoIcons.checkmark_seal_fill
-                                    : CupertinoIcons.xmark_seal_fill,
-                                color: flutterOk
-                                    ? MacosColors.systemGreenColor
-                                    : MacosColors.systemRedColor,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  flutterOk
-                                      ? 'Flutter detected'
-                                      : 'Flutter not found',
-                                  style: typography.headline.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: context.dxLabel,
+                          Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: (flutterOk
+                                          ? MacosColors.systemGreenColor
+                                          : MacosColors.systemRedColor)
+                                      .withValues(alpha: 0.14),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Center(
+                                  child: MacosIcon(
+                                    flutterOk
+                                        ? CupertinoIcons.checkmark_seal_fill
+                                        : CupertinoIcons.xmark_seal_fill,
+                                    color: flutterOk
+                                        ? MacosColors.systemGreenColor
+                                        : MacosColors.systemRedColor,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  flutterOk
-                                      ? '${settings.flutterInfo['version']}\n${settings.flutterInfo['path']}'
-                                      : 'Install Flutter and ensure it is available on your PATH.',
-                                  style: typography.caption1
-                                      .copyWith(color: secondary, height: 1.35),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      flutterOk
+                                          ? 'Flutter detected'
+                                          : 'Flutter not found',
+                                      style: typography.headline.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: context.dxLabel,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      flutterOk
+                                          ? '${settings.flutterInfo['version']}\n${settings.flutterInfo['path']}'
+                                          : 'Choose your Flutter SDK folder, or install Flutter below.',
+                                      style: typography.caption1.copyWith(
+                                        color: secondary,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SleekButton.label(
+                                label: flutterOk ? 'Change…' : 'Locate…',
+                                size: SleekButtonSize.small,
+                                leadingIcon: CupertinoIcons.folder,
+                                onPressed: () => _locateSdk(context),
+                              ),
+                              const SizedBox(width: 8),
+                              SleekButton.label(
+                                label: 'Refresh',
+                                size: SleekButtonSize.small,
+                                secondary: true,
+                                leadingIcon: CupertinoIcons.refresh,
+                                onPressed: settings.refreshSdk,
+                              ),
+                            ],
+                          ),
+                          if (settings.flutterInfo['isManual'] == true) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Using a folder you selected manually.',
+                                    style: typography.caption1
+                                        .copyWith(color: secondary),
+                                  ),
+                                ),
+                                SleekButton.label(
+                                  label: 'Use Auto-Detect',
+                                  size: SleekButtonSize.small,
+                                  secondary: true,
+                                  onPressed: settings.clearFlutterSdkPath,
                                 ),
                               ],
                             ),
-                          ),
-                          SleekButton.label(
-                            label: 'Refresh',
-                            size: SleekButtonSize.small,
-                            secondary: true,
-                            leadingIcon: CupertinoIcons.refresh,
-                            onPressed: settings.refreshSdk,
-                          ),
+                          ],
+                          if (!flutterOk) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              'Install Flutter',
+                              style: typography.subheadline.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: context.dxLabel,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Homebrew:\n'
+                              '    brew install --cask flutter\n\n'
+                              'Or download the SDK from docs.flutter.dev/get-started/install/macos '
+                              'and unzip it, then press Locate… and choose the "flutter" folder.\n\n'
+                              'Already installed? Drop-Xide is launched from Finder, which does not '
+                              'read your shell PATH, so use Locate… to point at the SDK folder '
+                              '(the one containing bin/flutter).',
+                              style: typography.caption1.copyWith(
+                                color: secondary,
+                                height: 1.45,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -238,6 +297,42 @@ class SettingsWidget extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Future<void> _locateSdk(BuildContext context) async {
+    final path = await AppFilePicker.pickDirectory(
+      confirmButtonText: 'Use SDK',
+    );
+    if (path == null || !context.mounted) return;
+
+    final ok = await context.read<SettingsProvider>().setFlutterSdkPath(path);
+    if (ok || !context.mounted) return;
+
+    await showMacosAlertDialog(
+      context: context,
+      builder: (_) => MacosAlertDialog(
+        appIcon: const MacosIcon(
+          CupertinoIcons.exclamationmark_triangle_fill,
+          size: 64,
+          color: MacosColors.systemOrangeColor,
+        ),
+        title: Text(
+          'Not a Flutter SDK',
+          style: MacosTheme.of(context).typography.headline,
+        ),
+        message: Text(
+          'No Flutter SDK was found at:\n$path\n\n'
+          'Choose the folder that contains bin/flutter — usually named '
+          '"flutter".',
+          textAlign: TextAlign.center,
+        ),
+        primaryButton: PushButton(
+          controlSize: ControlSize.large,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('OK'),
+        ),
+      ),
     );
   }
 

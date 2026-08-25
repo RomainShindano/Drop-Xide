@@ -39,7 +39,28 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<void> refreshSdk() async {
+    await _sdkService.detectFlutterSdk();
     _flutterInfo = await _sdkService.getFlutterInfo();
+    notifyListeners();
+  }
+
+  /// Points Drop-Xide at a specific SDK. Accepts the SDK root directory or the
+  /// `flutter` executable. Returns false when the path is not a usable SDK.
+  Future<bool> setFlutterSdkPath(String path) async {
+    final ok = await _sdkService.setSdkPath(path);
+    _flutterInfo = await _sdkService.getFlutterInfo();
+    _error = ok
+        ? null
+        : 'No Flutter SDK found at $path. Choose the SDK folder itself '
+            '(the one containing bin/flutter).';
+    notifyListeners();
+    return ok;
+  }
+
+  Future<void> clearFlutterSdkPath() async {
+    await _sdkService.clearSdkPath();
+    _flutterInfo = await _sdkService.getFlutterInfo();
+    _error = null;
     notifyListeners();
   }
 
