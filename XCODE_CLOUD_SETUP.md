@@ -9,6 +9,8 @@ DropXide is a **macOS desktop app**. Use the **macOS** workflow with
 |---------|--------|
 | `Command PhaseScriptExecution failed with a nonzero exit code` | Flutter ephemeral files + CocoaPods `Pods/` are gitignored. Xcode still runs script phases that need them (`macos_assemble.sh`, Check Pods Manifest.lock). |
 | Build succeeds but cannot distribute / TestFlight | Project-level `CODE_SIGN_IDENTITY = "-"` (ad-hoc) on Release blocked App Store signing. |
+| `Unable to resolve module dependency: 'window_manager'` (and other plugins) | Swift Package Manager left in the Xcode project (`FlutterGeneratedPluginSwiftPackage`) while Flutter was configured for CocoaPods-only — the SPM package was empty, so every plugin import failed. |
+| `Framework 'Pods_Runner' not found` | SPM hybrid left the project linking `Pods_Runner` without building it. |
 
 ## Fixes in this repo
 
@@ -16,25 +18,21 @@ DropXide is a **macOS desktop app**. Use the **macOS** workflow with
 2. **Release / Profile signing** — removed ad-hoc `CODE_SIGN_IDENTITY = "-"`, enabled Hardened Runtime
 3. **Bundle ID** — `com.oxidetech.dropXide` aligned in AppInfo
 4. **Release entitlements** — App Sandbox + network / file / Flutter runtime entitlements for Mac App Store
-5. **Removed `local_notifier`** — that plugin has no Swift Package Manager support and caused
-   `Unable to resolve module dependency: 'local_notifier'`. Notifications now use macOS `osascript`.
-6. **CocoaPods-only macOS plugins** — disabled Swift Package Manager in `pubspec.yaml` and use
-   `use_frameworks! :linkage => :static` so Xcode actually builds/links `Pods_Runner`
-   (fixes `Framework 'Pods_Runner' not found`).
+5. **Removed `local_notifier`** — notifications use macOS `osascript`
+6. **CocoaPods-only** — `enable-swift-package-manager: false`, static frameworks + modular headers
+7. **Removed SPM from Xcode** — deleted `FlutterGeneratedPluginSwiftPackage` from `project.pbxproj` so plugin modules resolve via CocoaPods
 
 ## Xcode Cloud workflow checklist
 
 1. **Platform**: macOS  
-2. **Workspace**: `macos/Runner.xcworkspace` (**not** `Runner.xcodeproj` — otherwise `Pods_Runner` is missing)  
+2. **Workspace**: `macos/Runner.xcworkspace` (**not** `Runner.xcodeproj`)  
 3. **Scheme**: `Runner`  
-4. **Archive configuration**: Release (default in scheme)  
-5. **Environment variable**:
-   - Name: `FLUTTER_VERSION`
-   - Value: `stable` (or your exact Flutter version)
-6. **Signing**: Automatic, team matching `DEVELOPMENT_TEAM` (`6C7TC4A89K`)
+4. **Archive configuration**: Release  
+5. **Environment variable**: `FLUTTER_VERSION` = `stable`  
+6. **Signing**: Automatic, team `6C7TC4A89K`  
 7. **Post-action**: App Store Connect → TestFlight (Mac)
 
-## Local recovery for `Framework 'Pods_Runner' not found`
+## Local recovery for module / Pods_Runner errors
 
 ```bash
 flutter clean
@@ -42,13 +40,17 @@ flutter config --no-enable-swift-package-manager
 flutter pub get
 flutter build macos --config-only
 cd macos
-rm -rf Pods Podfile.lock .symlinks
+rm -rf Pods .symlinks
 pod install --repo-update
 cd ..
 open macos/Runner.xcworkspace
 ```
 
-Then build/archive from the **workspace**, not the `.xcodeproj`.
+In Xcode → Runner target → **Frameworks, Libraries, and Embedded Content**:
+- Should list **Pods_Runner**
+- Should **not** list `FlutterGeneratedPluginSwiftPackage`
+
+Then build/archive from the **workspace**.
 
 ## App Store Connect
 
