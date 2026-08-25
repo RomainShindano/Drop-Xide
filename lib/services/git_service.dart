@@ -147,4 +147,47 @@ class GitService {
       return getBranches(projectPath);
     }
   }
+
+  /// Get recent commits
+  Future<List<dynamic>> getRecentCommits(String projectPath, {int limit = 10}) async {
+    try {
+      final result = await Process.run(
+        'git',
+        [
+          'log',
+          '--pretty=format:%H|%s|%an|%at',
+          '-n',
+          limit.toString(),
+        ],
+        workingDirectory: projectPath,
+      );
+
+      if (result.exitCode != 0) {
+        throw Exception('Failed to get commits: ${result.stderr}');
+      }
+
+      final commits = (result.stdout as String)
+          .split('\n')
+          .where((line) => line.isNotEmpty)
+          .map((line) {
+            final parts = line.split('|');
+            if (parts.length < 4) return null;
+            
+            return {
+              'hash': parts[0],
+              'message': parts[1],
+              'author': parts[2],
+              'date': DateTime.fromMillisecondsSinceEpoch(
+                int.parse(parts[3]) * 1000,
+              ),
+            };
+          })
+          .where((commit) => commit != null)
+          .toList();
+
+      return commits;
+    } catch (e) {
+      return [];
+    }
+  }
 }
