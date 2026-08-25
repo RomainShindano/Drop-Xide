@@ -3,11 +3,15 @@ import 'package:macos_ui/macos_ui.dart';
 import 'package:provider/provider.dart';
 import '../providers/project_provider.dart';
 import '../providers/build_provider.dart';
+import '../providers/publish_provider.dart';
 import '../providers/settings_provider.dart';
 import '../models/build_history.dart';
+import '../models/publish_history.dart';
 import '../widgets/project_list_widget.dart';
 import '../widgets/build_config_widget.dart';
 import '../widgets/build_history_widget.dart';
+import '../widgets/google_play_publish_widget.dart';
+import '../widgets/publish_history_widget.dart';
 import '../widgets/settings_widget.dart';
 import '../widgets/ui/macos_polish.dart';
 import 'add_project_screen.dart';
@@ -29,6 +33,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final typography = MacosTheme.of(context).typography;
     final selected = context.watch<ProjectProvider>().selectedProject;
     final isBuilding = context.watch<BuildProvider>().isBuilding;
+    final isPublishing = context.watch<PublishProvider>().currentPublish?.status == 
+        PublishStatus.uploading || 
+        context.watch<PublishProvider>().currentPublish?.status == PublishStatus.processing;
 
     return MacosWindow(
       sidebar: Sidebar(
@@ -101,6 +108,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 leading: MacosIcon(CupertinoIcons.doc_text),
                 label: Text('Logs'),
               ),
+              SidebarItem(
+                leading: const MacosIcon(CupertinoIcons.cloud_upload),
+                label: const Text('Publish'),
+                trailing: isPublishing
+                    ? const Padding(
+                        padding: EdgeInsets.only(right: 4),
+                        child: ProgressCircle(radius: 6),
+                      )
+                    : null,
+              ),
+              const SidebarItem(
+                leading: MacosIcon(CupertinoIcons.time),
+                label: Text('Publish History'),
+              ),
               const SidebarItem(
                 leading: MacosIcon(CupertinoIcons.settings),
                 label: Text('Settings'),
@@ -166,6 +187,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           _BuildPage(onRefresh: _refreshData),
           _HistoryPage(onRefresh: _refreshData),
+          _PublishPage(onRefresh: _refreshData),
+          _PublishHistoryPage(onRefresh: _refreshData),
           const _SettingsPage(),
         ],
       ),
@@ -186,6 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _refreshData() {
     context.read<ProjectProvider>().loadProjects();
     context.read<BuildProvider>().loadBuildHistory();
+    context.read<PublishProvider>().loadPublishHistory();
   }
 }
 
@@ -337,6 +361,84 @@ class _SettingsPage extends StatelessWidget {
         ContentArea(
           builder: (context, scrollController) {
             return const SettingsWidget();
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _PublishPage extends StatelessWidget {
+  final VoidCallback onRefresh;
+
+  const _PublishPage({required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    final isPublishing = context.watch<PublishProvider>().currentPublish?.status == 
+        PublishStatus.uploading || 
+        context.watch<PublishProvider>().currentPublish?.status == PublishStatus.processing;
+
+    return MacosScaffold(
+      toolBar: ToolBar(
+        title: const Text('Publish to Play Store'),
+        titleWidth: 180,
+        actions: [
+          if (isPublishing)
+            CustomToolbarItem(
+              inToolbarBuilder: (context) => const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: StatusPill(
+                  label: 'Publishing',
+                  color: MacosColors.systemBlueColor,
+                ),
+              ),
+            ),
+          ToolBarIconButton(
+            label: 'Refresh',
+            icon: const MacosIcon(CupertinoIcons.refresh),
+            onPressed: onRefresh,
+            showLabel: false,
+            tooltipMessage: 'Refresh',
+          ),
+        ],
+      ),
+      children: [
+        ContentArea(
+          builder: (context, scrollController) {
+            return const GooglePlayPublishWidget();
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _PublishHistoryPage extends StatelessWidget {
+  final VoidCallback onRefresh;
+
+  const _PublishHistoryPage({required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    return MacosScaffold(
+      toolBar: ToolBar(
+        title: const Text('Publish History'),
+        titleWidth: 140,
+        actions: [
+          ToolBarIconButton(
+            label: 'Refresh',
+            icon: const MacosIcon(CupertinoIcons.refresh),
+            onPressed: onRefresh,
+            showLabel: false,
+            tooltipMessage: 'Refresh',
+          ),
+        ],
+      ),
+      children: [
+        ContentArea(
+          builder: (context, scrollController) {
+            return const PublishHistoryWidget();
           },
         ),
       ],
