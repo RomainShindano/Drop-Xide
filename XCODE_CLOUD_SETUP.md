@@ -18,6 +18,8 @@ DropXide is a **macOS desktop app**. Native plugins are linked with
 3. Removed CocoaPods from the macOS project (`Podfile`, `Pods_Runner`, `[CP]` script phases)
 4. Flutter xcconfigs only include `ephemeral/Flutter-Generated.xcconfig`
 5. CI scripts verify `Package.swift` contains real plugin dependencies
+6. CI creates empty `FlutterInputs.xcfilelist` / `FlutterOutputs.xcfilelist` before
+   xcodebuild (fixes `Unable to load contents of file list` on Flutter Assemble)
 
 ## Xcode Cloud checklist
 
