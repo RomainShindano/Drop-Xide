@@ -10,12 +10,14 @@ import '../models/build_history.dart';
 import '../models/flutter_project.dart';
 import 'database_service.dart';
 import 'flutter_sdk_service.dart';
+import 'git_service.dart';
 import 'project_service.dart';
 
 class BuildService {
   final DatabaseService _db = DatabaseService.instance;
   final ProjectService _projectService = ProjectService();
   final FlutterSdkService _sdkService = FlutterSdkService();
+  final GitService _gitService = GitService();
   final _uuid = const Uuid();
 
   final _buildStreamController = StreamController<BuildHistory>.broadcast();
@@ -96,10 +98,25 @@ class BuildService {
     final config = buildHistory.buildConfig;
 
     try {
+      // Checkout branch if specified
+      if (config.branch != null && config.branch!.isNotEmpty) {
+        await _appendLog(current.id, 'Checking out branch: ${config.branch}...');
+        try {
+          await _gitService.checkoutBranch(project.path, config.branch!);
+          await _appendLog(current.id, 'Successfully checked out branch: ${config.branch}');
+        } catch (e) {
+          await _appendLog(current.id, 'Warning: Failed to checkout branch: $e');
+          await _appendLog(current.id, 'Continuing with current branch...');
+        }
+      }
+
       final outputDir = await _getOutputDirectory(project.name);
       final command = _buildFlutterArgs(config, outputDir);
 
       await _appendLog(current.id, 'Starting build for ${project.name}...');
+      if (config.branch != null && config.branch!.isNotEmpty) {
+        await _appendLog(current.id, 'Branch: ${config.branch}');
+      }
       await _appendLog(current.id, 'Platform: ${config.platform.name}');
       await _appendLog(current.id, 'Mode: ${config.mode.name}');
       if (config.platform == BuildPlatform.android) {

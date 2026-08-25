@@ -110,6 +110,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 leading: MacosIcon(CupertinoIcons.doc_text),
                 label: Text('Logs'),
               ),
+              const SidebarItem(
+                leading: MacosIcon(CupertinoIcons.list_bullet),
+                label: Text('Build Queue'),
+              ),
+              const SidebarItem(
+                leading: MacosIcon(CupertinoIcons.square_on_square),
+                label: Text('Templates'),
+              ),
               SidebarItem(
                 leading: const MacosIcon(CupertinoIcons.cloud_upload),
                 label: const Text('Publish'),
@@ -189,6 +197,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           _BuildPage(onRefresh: _refreshData),
           _HistoryPage(onRefresh: _refreshData),
+          _BuildQueuePage(onRefresh: _refreshData),
+          _BuildTemplatesPage(onRefresh: _refreshData),
           _PublishPage(onRefresh: _refreshData),
           _PublishHistoryPage(onRefresh: _refreshData),
           const _SettingsPage(),
@@ -211,6 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _refreshData() {
     context.read<ProjectProvider>().loadProjects();
     context.read<BuildProvider>().loadBuildHistory();
+    context.read<BuildProvider>().loadTemplates();
     context.read<PublishProvider>().loadPublishHistory();
   }
 }
@@ -409,6 +420,70 @@ class _PublishPage extends StatelessWidget {
         ContentArea(
           builder: (context, scrollController) {
             return const GooglePlayPublishWidget();
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _BuildQueuePage extends StatelessWidget {
+  final VoidCallback onRefresh;
+
+  const _BuildQueuePage({required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    return MacosScaffold(
+      toolBar: ToolBar(
+        title: const Text('Build Queue'),
+        titleWidth: 120,
+        actions: [
+          ToolBarIconButton(
+            label: 'Refresh',
+            icon: const MacosIcon(CupertinoIcons.refresh),
+            onPressed: onRefresh,
+            showLabel: false,
+            tooltipMessage: 'Refresh',
+          ),
+        ],
+      ),
+      children: [
+        ContentArea(
+          builder: (context, scrollController) {
+            return const BuildQueueWidget();
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _BuildTemplatesPage extends StatelessWidget {
+  final VoidCallback onRefresh;
+
+  const _BuildTemplatesPage({required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    return MacosScaffold(
+      toolBar: ToolBar(
+        title: const Text('Build Templates'),
+        titleWidth: 140,
+        actions: [
+          ToolBarIconButton(
+            label: 'Refresh',
+            icon: const MacosIcon(CupertinoIcons.refresh),
+            onPressed: onRefresh,
+            showLabel: false,
+            tooltipMessage: 'Refresh',
+          ),
+        ],
+      ),
+      children: [
+        ContentArea(
+          builder: (context, scrollController) {
+            return const BuildTemplatesWidget();
           },
         ),
       ],
