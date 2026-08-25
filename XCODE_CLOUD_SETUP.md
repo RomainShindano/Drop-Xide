@@ -1,86 +1,55 @@
-# Xcode Cloud Setup (macOS only)
+# Xcode Cloud Setup (macOS / Swift Package Manager)
 
-DropXide is a **macOS desktop app**. Use the **macOS** workflow with
-`macos/Runner.xcworkspace` — not an iOS scheme.
+DropXide is a **macOS desktop app**. Native plugins are linked with
+**Swift Package Manager only** (no CocoaPods).
 
 ## What was broken
 
 | Symptom | Cause |
 |---------|--------|
-| `Command PhaseScriptExecution failed with a nonzero exit code` | Flutter ephemeral files + CocoaPods `Pods/` are gitignored. Xcode still runs script phases that need them (`macos_assemble.sh`, Check Pods Manifest.lock). |
-| Build succeeds but cannot distribute / TestFlight | Project-level `CODE_SIGN_IDENTITY = "-"` (ad-hoc) on Release blocked App Store signing. |
-| `Unable to resolve module dependency: 'window_manager'` (and other plugins) | Swift Package Manager left in the Xcode project (`FlutterGeneratedPluginSwiftPackage`) while Flutter was configured for CocoaPods-only — the SPM package was empty, so every plugin import failed. |
-| `Framework 'Pods_Runner' not found` | SPM hybrid left the project linking `Pods_Runner` without building it. |
+| `Unable to resolve module dependency: 'window_manager'` (and other plugins) | CocoaPods search paths pointed at DerivedData products that were never built before the module scanner ran. |
+| `Framework 'Pods_Runner' not found` | Hybrid SPM + CocoaPods left the project linking a framework that wasn't produced. |
+| Empty `FlutterGeneratedPluginSwiftPackage` | SPM disabled in `pubspec.yaml` while the Xcode project still expected SPM modules. |
 
-## Fixes in this repo
+## Fix in this repo
 
-1. **`macos/ci_scripts/`** — install Flutter, generate ephemeral files, run **`pod install`**
-2. **Release / Profile signing** — removed ad-hoc `CODE_SIGN_IDENTITY = "-"`, enabled Hardened Runtime
-3. **Bundle ID** — `com.oxidetech.dropXide` aligned in AppInfo
-4. **Release entitlements** — App Sandbox + network / file / Flutter runtime entitlements for Mac App Store
-5. **Removed `local_notifier`** — notifications use macOS `osascript`
-6. **CocoaPods-only** — `enable-swift-package-manager: false`, static frameworks + modular headers
-7. **Removed SPM from Xcode** — deleted `FlutterGeneratedPluginSwiftPackage` from `project.pbxproj` so plugin modules resolve via CocoaPods
+1. Re-enabled Flutter Swift Package Manager (default on Flutter 3.44+)
+2. Restored `FlutterGeneratedPluginSwiftPackage` in `macos/Runner.xcodeproj`
+3. Removed CocoaPods from the macOS project (`Podfile`, `Pods_Runner`, `[CP]` script phases)
+4. Flutter xcconfigs only include `ephemeral/Flutter-Generated.xcconfig`
+5. CI scripts verify `Package.swift` contains real plugin dependencies
 
-## Xcode Cloud workflow checklist
+## Xcode Cloud checklist
 
-1. **Platform**: macOS  
-2. **Workspace**: `macos/Runner.xcworkspace` (**not** `Runner.xcodeproj`)  
-3. **Scheme**: `Runner`  
-4. **Archive configuration**: Release  
-5. **Environment variable**: `FLUTTER_VERSION` = `stable`  
-6. **Signing**: Automatic, team `6C7TC4A89K`  
-7. **Post-action**: App Store Connect → TestFlight (Mac)
+1. Platform: **macOS**
+2. Scheme: **Runner** (`macos/Runner.xcodeproj` / workspace)
+3. Env: `FLUTTER_VERSION` = `stable` (or `3.47.1`)
+4. Signing: Automatic, team `6C7TC4A89K`
+5. Post-action: TestFlight (Mac)
 
-## Local recovery for module / Pods_Runner errors
+## Local recovery
 
 ```bash
 flutter clean
-flutter config --no-enable-swift-package-manager
+flutter config --enable-swift-package-manager
 flutter pub get
-flutter build macos --config-only
-cd macos
-rm -rf Pods .symlinks
-pod install --repo-update
-cd ..
+# On a Mac with Xcode 15+, Package.swift should list plugins:
+cat macos/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift
 open macos/Runner.xcworkspace
 ```
 
-In Xcode → Runner target → **Frameworks, Libraries, and Embedded Content**:
-- Should list **Pods_Runner**
-- Should **not** list `FlutterGeneratedPluginSwiftPackage`
+In Xcode → Runner → Frameworks:
 
-Then build/archive from the **workspace**.
+- **FlutterGeneratedPluginSwiftPackage** present
+- **Pods_Runner** absent
 
-## App Store Connect
-
-1. Create a **macOS** app (not iOS) with bundle ID `com.oxidetech.dropXide`
-2. Ensure the same Apple team is linked to Xcode Cloud
-3. For TestFlight Mac, distribution uses Mac App Store signing + App Sandbox
-
-## Verify in build logs
-
-Look for:
+## Verify in Xcode Cloud logs
 
 ```
-=== DropXide Xcode Cloud: post-clone (macOS) ===
-=== pod install ===
-=== DropXide Xcode Cloud: post-clone complete ===
-=== Flutter + CocoaPods ready for xcodebuild ===
+=== DropXide Xcode Cloud: post-clone (macOS / SPM) ===
+=== FlutterGeneratedPluginSwiftPackage/Package.swift ===
+... window_manager / macos_ui / ...
+=== DropXide Xcode Cloud: post-clone complete (SPM) ===
 ```
 
-If PhaseScriptExecution still fails, expand the failed script phase in the log:
-
-- **Run Script / Flutter Assemble** → `FLUTTER_ROOT` / ephemeral missing → check `ci_post_clone.sh`
-- **Check Pods Manifest.lock** → `pod install` did not run or failed
-- **Code Sign / Distribute** → signing / App Store Connect app / entitlements
-
-## Local check before pushing
-
-```bash
-flutter pub get
-flutter build macos --config-only
-cd macos && pod install && cd ..
-```
-
-Then archive locally in Xcode (Product → Archive) and use Organizer → Distribute App → App Store Connect / TestFlight.
+If `Package.swift` shows empty `dependencies: []`, Flutter did not see Xcode 15+ / SPM was disabled — the build will fail the CI script before xcodebuild.

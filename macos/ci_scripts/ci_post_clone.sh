@@ -1,15 +1,17 @@
 #!/bin/sh
 #
-# Xcode Cloud post-clone hook for DropXide (macOS only, CocoaPods).
+# Xcode Cloud post-clone hook for DropXide (macOS / Swift Package Manager).
 #
-# Required Xcode Cloud environment variable:
-#   FLUTTER_VERSION  e.g. stable or 3.24.0
+# All Flutter plugins used by this app ship Package.swift, so macOS uses SPM
+# only (no CocoaPods). Xcode Cloud must have Xcode 15+ so Flutter can generate
+# FlutterGeneratedPluginSwiftPackage with real plugin dependencies.
 #
-# IMPORTANT: Build macos/Runner.xcworkspace (not .xcodeproj).
+# Required environment variable:
+#   FLUTTER_VERSION  e.g. stable or 3.47.1
 #
 set -euo pipefail
 
-echo "=== DropXide Xcode Cloud: post-clone (macOS / CocoaPods) ==="
+echo "=== DropXide Xcode Cloud: post-clone (macOS / SPM) ==="
 
 FLUTTER_VERSION="${FLUTTER_VERSION:-stable}"
 FLUTTER_PROJECT_PATH="${FLUTTER_PROJECT_PATH:-.}"
@@ -23,63 +25,65 @@ fi
 export PATH="$FLUTTER_HOME/bin:$PATH"
 flutter --version
 
-# CocoaPods-only: do not use Flutter Swift Package Manager for plugins
-flutter config --no-enable-swift-package-manager
+# SPM is the supported path on Flutter 3.44+
+flutter config --enable-swift-package-manager
+flutter config --enable-macos-desktop
 
 cd "$CI_PRIMARY_REPOSITORY_PATH/$FLUTTER_PROJECT_PATH"
 
 echo "=== Precache macOS artifacts ==="
 flutter precache --macos
 
-echo "=== flutter pub get ==="
+echo "=== flutter pub get (generates FlutterGeneratedPluginSwiftPackage on macOS/Xcode) ==="
 flutter pub get
 
-echo "=== Generate macOS Flutter ephemeral files (Flutter-Generated.xcconfig) ==="
-flutter build macos --config-only
-
 GENERATED_XCCONFIG="macos/Flutter/ephemeral/Flutter-Generated.xcconfig"
+PACKAGE_DIR="macos/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage"
+PACKAGE_SWIFT="$PACKAGE_DIR/Package.swift"
+
+# Ensure ephemeral Flutter config exists (pub get usually creates it on macOS)
 if [ ! -f "$GENERATED_XCCONFIG" ]; then
-  echo "ERROR: Expected $GENERATED_XCCONFIG was not generated."
+  echo "=== Flutter-Generated.xcconfig missing; running macos assemble prepare ==="
+  # macos_assemble prepare needs FLUTTER_ROOT; use flutter tool to materialize files
+  flutter build bundle
+  # On Xcode Cloud (macOS), also try the assemble helper if FLUTTER_ROOT is known
+  if [ -x "$FLUTTER_HOME/packages/flutter_tools/bin/macos_assemble.sh" ]; then
+    export FLUTTER_ROOT="$FLUTTER_HOME"
+    (cd macos && "$FLUTTER_HOME/packages/flutter_tools/bin/macos_assemble.sh" prepare) || true
+  fi
+fi
+
+if [ ! -f "$GENERATED_XCCONFIG" ]; then
+  echo "ERROR: $GENERATED_XCCONFIG was not generated."
   ls -la macos/Flutter/ephemeral || true
+  exit 1
+fi
+
+if [ ! -f "$PACKAGE_SWIFT" ]; then
+  echo "ERROR: $PACKAGE_SWIFT was not generated."
+  ls -la macos/Flutter/ephemeral/Packages || true
   exit 1
 fi
 
 echo "=== Flutter-Generated.xcconfig ==="
 cat "$GENERATED_XCCONFIG"
 
-echo "=== pod install ==="
-cd macos
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
-rm -rf Pods .symlinks
-pod install --repo-update
-cd ..
+echo "=== FlutterGeneratedPluginSwiftPackage/Package.swift ==="
+cat "$PACKAGE_SWIFT"
 
-if [ ! -d "macos/Pods/Pods.xcodeproj" ]; then
-  echo "ERROR: macos/Pods/Pods.xcodeproj missing — cannot resolve plugin modules."
+# Package.swift must list plugin dependencies; an empty dependencies: [] means
+# SPM feature was off or Xcode was unavailable when Flutter ran.
+if ! grep -q 'window_manager\|macos_ui\|shared_preferences_foundation\|sqflite_darwin' "$PACKAGE_SWIFT"; then
+  echo "ERROR: Package.swift has no plugin dependencies."
+  echo "Unable to resolve module dependency errors will occur."
+  echo "Ensure Flutter SPM is enabled and Xcode 15+ is available in this environment."
   exit 1
 fi
 
-for cfg in debug release profile; do
-  xcconfig="macos/Pods/Target Support Files/Pods-Runner/Pods-Runner.${cfg}.xcconfig"
-  if [ ! -f "$xcconfig" ]; then
-    echo "ERROR: Missing $xcconfig"
-    ls -la "macos/Pods/Target Support Files/Pods-Runner/" || true
-    exit 1
-  fi
-  echo "=== $xcconfig ==="
-  # Show which frameworks/modules CocoaPods will expose
-  grep -E 'OTHER_LDFLAGS|HEADER_SEARCH|FRAMEWORK_SEARCH|OTHER_MODULE' "$xcconfig" || true
-done
+# CocoaPods must NOT be required
+if [ -f macos/Podfile ]; then
+  echo "WARNING: macos/Podfile exists; this project is SPM-only. Consider removing it."
+fi
 
-# Sanity: expected plugin pods should exist
-for pod in window_manager macos_ui sqflite_darwin shared_preferences_foundation; do
-  if [ ! -d "macos/Pods/$pod" ] && ! ls -d macos/Pods/$pod* >/dev/null 2>&1; then
-    echo "WARNING: pod directory for $pod not found under macos/Pods (check Podfile.lock)"
-  fi
-done
-
-echo "=== CocoaPods plugins ready (modules via Pods_Runner) ==="
-echo "=== Reminder: use macos/Runner.xcworkspace ==="
-echo "=== DropXide Xcode Cloud: post-clone complete ==="
+echo "=== DropXide Xcode Cloud: post-clone complete (SPM) ==="
 exit 0

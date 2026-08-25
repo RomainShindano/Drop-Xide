@@ -66,13 +66,6 @@ dev_dependencies:
   mockito: ^5.4.4
 
 flutter:
-  # CocoaPods-only for macOS plugins.
-  # Swift Package Manager must stay off AND must be removed from the Xcode
-  # project (no FlutterGeneratedPluginSwiftPackage). Otherwise Xcode reports:
-  #   Unable to resolve module dependency: 'window_manager' / 'macos_ui' / ...
-  config:
-    enable-swift-package-manager: false
-
   uses-material-design: true
 
   assets:
