@@ -1,5 +1,9 @@
 # Flutter-related
-**/Flutter/ephemeral/
+**/Flutter/ephemeral/**
+# Keep empty xcfilelists so Xcode can load the Flutter Assemble target
+# before `flutter` regenerates them (Xcode Cloud / clean checkouts).
+!**/Flutter/ephemeral/FlutterInputs.xcfilelist
+!**/Flutter/ephemeral/FlutterOutputs.xcfilelist
 **/Pods/
 
 # Xcode-related

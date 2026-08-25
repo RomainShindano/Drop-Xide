@@ -2,10 +2,6 @@
 #
 # Xcode Cloud post-clone hook for DropXide (macOS / Swift Package Manager).
 #
-# All Flutter plugins used by this app ship Package.swift, so macOS uses SPM
-# only (no CocoaPods). Xcode Cloud must have Xcode 15+ so Flutter can generate
-# FlutterGeneratedPluginSwiftPackage with real plugin dependencies.
-#
 # Required environment variable:
 #   FLUTTER_VERSION  e.g. stable or 3.47.1
 #
@@ -23,45 +19,71 @@ if [ ! -x "$FLUTTER_HOME/bin/flutter" ]; then
 fi
 
 export PATH="$FLUTTER_HOME/bin:$PATH"
+export FLUTTER_ROOT="$FLUTTER_HOME"
 flutter --version
 
-# SPM is the supported path on Flutter 3.44+
 flutter config --enable-swift-package-manager
 flutter config --enable-macos-desktop
 
 cd "$CI_PRIMARY_REPOSITORY_PATH/$FLUTTER_PROJECT_PATH"
 
+EPHEMERAL_DIR="macos/Flutter/ephemeral"
+INPUTS_LIST="$EPHEMERAL_DIR/FlutterInputs.xcfilelist"
+OUTPUTS_LIST="$EPHEMERAL_DIR/FlutterOutputs.xcfilelist"
+GENERATED_XCCONFIG="$EPHEMERAL_DIR/Flutter-Generated.xcconfig"
+PACKAGE_DIR="$EPHEMERAL_DIR/Packages/FlutterGeneratedPluginSwiftPackage"
+PACKAGE_SWIFT="$PACKAGE_DIR/Package.swift"
+
+# Xcode's "Flutter Assemble" target references these file lists in the pbxproj.
+# They are gitignored (ephemeral/) and must exist before xcodebuild parses the
+# project, otherwise:
+#   Unable to load contents of file list: '.../FlutterInputs.xcfilelist'
+# Flutter itself creates empty lists when missing (see build_macos.dart).
+echo "=== Creating ephemeral Flutter xcfilelists (required before xcodebuild) ==="
+mkdir -p "$EPHEMERAL_DIR"
+: > "$INPUTS_LIST"
+: > "$OUTPUTS_LIST"
+touch "$EPHEMERAL_DIR/tripwire"
+
 echo "=== Precache macOS artifacts ==="
 flutter precache --macos
 
-echo "=== flutter pub get (generates FlutterGeneratedPluginSwiftPackage on macOS/Xcode) ==="
+echo "=== flutter pub get ==="
 flutter pub get
 
-GENERATED_XCCONFIG="macos/Flutter/ephemeral/Flutter-Generated.xcconfig"
-PACKAGE_DIR="macos/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage"
-PACKAGE_SWIFT="$PACKAGE_DIR/Package.swift"
-
-# Ensure ephemeral Flutter config exists (pub get usually creates it on macOS)
-if [ ! -f "$GENERATED_XCCONFIG" ]; then
-  echo "=== Flutter-Generated.xcconfig missing; running macos assemble prepare ==="
-  # macos_assemble prepare needs FLUTTER_ROOT; use flutter tool to materialize files
-  flutter build bundle
-  # On Xcode Cloud (macOS), also try the assemble helper if FLUTTER_ROOT is known
-  if [ -x "$FLUTTER_HOME/packages/flutter_tools/bin/macos_assemble.sh" ]; then
-    export FLUTTER_ROOT="$FLUTTER_HOME"
-    (cd macos && "$FLUTTER_HOME/packages/flutter_tools/bin/macos_assemble.sh" prepare) || true
-  fi
+# Prefer Flutter's config-only path when available (macOS CI).
+if flutter build macos -h 2>/dev/null | grep -q -- '--config-only'; then
+  echo "=== flutter build macos --config-only ==="
+  flutter build macos --config-only
+elif [ -x "$FLUTTER_ROOT/packages/flutter_tools/bin/macos_assemble.sh" ]; then
+  echo "=== macos_assemble.sh prepare ==="
+  (
+    cd macos
+    # Provide minimal env so prepare can write Generated.xcconfig / file lists
+    export FLUTTER_APPLICATION_PATH="$CI_PRIMARY_REPOSITORY_PATH/$FLUTTER_PROJECT_PATH"
+    export FLUTTER_TARGET=lib/main.dart
+    export FLUTTER_BUILD_DIR=build
+    export CONFIGURATION=Release
+    export ACTION=build
+    export SRCROOT="$PWD"
+    "$FLUTTER_ROOT/packages/flutter_tools/bin/macos_assemble.sh" prepare || true
+  )
 fi
+
+# Ensure file lists still exist (config-only / prepare may rewrite them)
+mkdir -p "$EPHEMERAL_DIR"
+[ -f "$INPUTS_LIST" ] || : > "$INPUTS_LIST"
+[ -f "$OUTPUTS_LIST" ] || : > "$OUTPUTS_LIST"
 
 if [ ! -f "$GENERATED_XCCONFIG" ]; then
   echo "ERROR: $GENERATED_XCCONFIG was not generated."
-  ls -la macos/Flutter/ephemeral || true
+  ls -la "$EPHEMERAL_DIR" || true
   exit 1
 fi
 
 if [ ! -f "$PACKAGE_SWIFT" ]; then
   echo "ERROR: $PACKAGE_SWIFT was not generated."
-  ls -la macos/Flutter/ephemeral/Packages || true
+  ls -la "$EPHEMERAL_DIR/Packages" || true
   exit 1
 fi
 
@@ -71,19 +93,13 @@ cat "$GENERATED_XCCONFIG"
 echo "=== FlutterGeneratedPluginSwiftPackage/Package.swift ==="
 cat "$PACKAGE_SWIFT"
 
-# Package.swift must list plugin dependencies; an empty dependencies: [] means
-# SPM feature was off or Xcode was unavailable when Flutter ran.
 if ! grep -q 'window_manager\|macos_ui\|shared_preferences_foundation\|sqflite_darwin' "$PACKAGE_SWIFT"; then
   echo "ERROR: Package.swift has no plugin dependencies."
-  echo "Unable to resolve module dependency errors will occur."
-  echo "Ensure Flutter SPM is enabled and Xcode 15+ is available in this environment."
   exit 1
 fi
 
-# CocoaPods must NOT be required
-if [ -f macos/Podfile ]; then
-  echo "WARNING: macos/Podfile exists; this project is SPM-only. Consider removing it."
-fi
+echo "=== Ephemeral file lists ==="
+ls -la "$INPUTS_LIST" "$OUTPUTS_LIST"
 
 echo "=== DropXide Xcode Cloud: post-clone complete (SPM) ==="
 exit 0
