@@ -1,26 +1,15 @@
-# Xcode Cloud scripts (macOS)
+# Xcode Cloud scripts (macOS / CocoaPods)
 
-DropXide is a **macOS-only** Flutter app. These scripts live at `macos/ci_scripts/`
-so Xcode Cloud runs them automatically when building `macos/Runner.xcworkspace`.
+DropXide uses **CocoaPods only** for macOS plugins (Swift Package Manager is disabled
+and removed from the Xcode project).
 
 | Script | When |
 |--------|------|
-| `ci_post_clone.sh` | After clone — installs Flutter, generates ephemeral files, runs `pod install` |
-| `ci_pre_xcodebuild.sh` | Before xcodebuild — verifies Flutter + Pods |
-| `ci_post_xcodebuild.sh` | After xcodebuild — logs archive paths |
+| `ci_post_clone.sh` | Install Flutter, generate ephemeral files, `pod install` |
+| `ci_pre_xcodebuild.sh` | Verify Flutter + Pods before xcodebuild |
+| `ci_post_xcodebuild.sh` | Log archive paths |
 
-## Required environment variable
+## Required
 
-In the Xcode Cloud workflow → **Environment**:
-
-- `FLUTTER_VERSION` = `stable` (or pin, e.g. `3.24.0`)
-
-## Required workflow setting
-
-Build **`macos/Runner.xcworkspace`** (includes `Pods/Pods.xcodeproj`).  
-Building the `.xcodeproj` alone causes: `Framework 'Pods_Runner' not found`.
-
-## Why builds fail without these scripts
-
-1. `macos/Flutter/ephemeral/` is gitignored → assemble scripts fail
-2. `macos/Pods/` is gitignored → linker cannot find `Pods_Runner`
+- Env: `FLUTTER_VERSION` = `stable`
+- Workflow builds **`macos/Runner.xcworkspace`**

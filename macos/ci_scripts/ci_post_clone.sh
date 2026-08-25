@@ -1,25 +1,20 @@
 #!/bin/sh
 #
-# Xcode Cloud post-clone hook for DropXide (macOS only).
-#
-# Runs after Xcode Cloud clones the repo, before xcodebuild.
-# Without this script, Flutter ephemeral files and CocoaPods are missing,
-# which causes: Command PhaseScriptExecution failed / Framework Pods_Runner not found
+# Xcode Cloud post-clone hook for DropXide (macOS only, CocoaPods).
 #
 # Required Xcode Cloud environment variable:
-#   FLUTTER_VERSION  e.g. stable or 3.24.0  (pin to the Flutter version you develop with)
+#   FLUTTER_VERSION  e.g. stable or 3.24.0
 #
-# IMPORTANT: Xcode Cloud workflow must build macos/Runner.xcworkspace (not .xcodeproj).
+# IMPORTANT: Build macos/Runner.xcworkspace (not .xcodeproj).
 #
 set -euo pipefail
 
-echo "=== DropXide Xcode Cloud: post-clone (macOS) ==="
+echo "=== DropXide Xcode Cloud: post-clone (macOS / CocoaPods) ==="
 
 FLUTTER_VERSION="${FLUTTER_VERSION:-stable}"
 FLUTTER_PROJECT_PATH="${FLUTTER_PROJECT_PATH:-.}"
 FLUTTER_HOME="${FLUTTER_HOME:-$HOME/flutter}"
 
-# Install Flutter if needed
 if [ ! -x "$FLUTTER_HOME/bin/flutter" ]; then
   echo "=== Installing Flutter ($FLUTTER_VERSION) ==="
   git clone https://github.com/flutter/flutter.git --depth 1 -b "$FLUTTER_VERSION" "$FLUTTER_HOME"
@@ -28,7 +23,7 @@ fi
 export PATH="$FLUTTER_HOME/bin:$PATH"
 flutter --version
 
-# Match pubspec.yaml: CocoaPods-only for macOS plugins (avoids Pods_Runner hybrid SPM bug)
+# CocoaPods-only: do not use Flutter Swift Package Manager for plugins
 flutter config --no-enable-swift-package-manager
 
 cd "$CI_PRIMARY_REPOSITORY_PATH/$FLUTTER_PROJECT_PATH"
@@ -39,63 +34,52 @@ flutter precache --macos
 echo "=== flutter pub get ==="
 flutter pub get
 
-echo "=== Generate macOS Flutter ephemeral files ==="
+echo "=== Generate macOS Flutter ephemeral files (Flutter-Generated.xcconfig) ==="
 flutter build macos --config-only
 
 GENERATED_XCCONFIG="macos/Flutter/ephemeral/Flutter-Generated.xcconfig"
-PACKAGE_DIR="macos/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage"
-
 if [ ! -f "$GENERATED_XCCONFIG" ]; then
   echo "ERROR: Expected $GENERATED_XCCONFIG was not generated."
   ls -la macos/Flutter/ephemeral || true
   exit 1
 fi
 
-# Package dir may still be generated because the Xcode project references it.
-# It is OK if present as a stub while plugins come from CocoaPods.
-if [ -d "$PACKAGE_DIR" ]; then
-  echo "=== SPM package stub present at $PACKAGE_DIR ==="
-fi
-
 echo "=== Flutter-Generated.xcconfig ==="
 cat "$GENERATED_XCCONFIG"
 
-# CocoaPods is required: Pods/ is gitignored. Without pod install,
-# the linker fails with: Framework 'Pods_Runner' not found
 echo "=== pod install ==="
 cd macos
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
-rm -rf Pods
+rm -rf Pods .symlinks
 pod install --repo-update
 cd ..
 
-if [ ! -d "macos/Pods" ]; then
-  echo "ERROR: macos/Pods was not created by pod install."
-  exit 1
-fi
-
-if [ ! -f "macos/Pods/Manifest.lock" ]; then
-  echo "ERROR: macos/Pods/Manifest.lock missing after pod install."
-  exit 1
-fi
-
 if [ ! -d "macos/Pods/Pods.xcodeproj" ]; then
-  echo "ERROR: macos/Pods/Pods.xcodeproj missing — Xcode cannot link Pods_Runner."
+  echo "ERROR: macos/Pods/Pods.xcodeproj missing — cannot resolve plugin modules."
   exit 1
 fi
 
 for cfg in debug release profile; do
   xcconfig="macos/Pods/Target Support Files/Pods-Runner/Pods-Runner.${cfg}.xcconfig"
   if [ ! -f "$xcconfig" ]; then
-    echo "ERROR: Missing $xcconfig (Pods_Runner will not link)."
+    echo "ERROR: Missing $xcconfig"
     ls -la "macos/Pods/Target Support Files/Pods-Runner/" || true
     exit 1
   fi
+  echo "=== $xcconfig ==="
+  # Show which frameworks/modules CocoaPods will expose
+  grep -E 'OTHER_LDFLAGS|HEADER_SEARCH|FRAMEWORK_SEARCH|OTHER_MODULE' "$xcconfig" || true
 done
 
-echo "=== Pods-Runner ready (Pods_Runner will link via workspace) ==="
-echo "=== Reminder: Xcode Cloud must use macos/Runner.xcworkspace ==="
+# Sanity: expected plugin pods should exist
+for pod in window_manager macos_ui sqflite_darwin shared_preferences_foundation; do
+  if [ ! -d "macos/Pods/$pod" ] && ! ls -d macos/Pods/$pod* >/dev/null 2>&1; then
+    echo "WARNING: pod directory for $pod not found under macos/Pods (check Podfile.lock)"
+  fi
+done
 
+echo "=== CocoaPods plugins ready (modules via Pods_Runner) ==="
+echo "=== Reminder: use macos/Runner.xcworkspace ==="
 echo "=== DropXide Xcode Cloud: post-clone complete ==="
 exit 0
