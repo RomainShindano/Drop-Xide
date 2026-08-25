@@ -39,6 +39,30 @@ To find it in Xcode Cloud:
    - `Unable to resolve module`
    - `Command PhaseScriptExecution failed`
 
+## Signing errors
+
+```
+No signing certificate "Mac Development" found: No "Mac Development" signing
+certificate matching team ID "6C7TC4A89K" with a private key was found.
+```
+
+Signing certificates are only available to Xcode Cloud's own build/archive step.
+They are **not** available inside `ci_post_clone.sh` / `ci_pre_xcodebuild.sh`, so
+any `xcodebuild` or `flutter build macos` run from a CI script must disable
+signing:
+
+```bash
+xcodebuild ... CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+```
+
+If the same error appears in the **real** build step, then Xcode Cloud has no
+usable certificate for team `6C7TC4A89K`. Fix it in the workflow:
+
+1. Xcode Cloud → workflow → **Archive** (or Build) action
+2. Set **Code Signing** to *Xcode Cloud managed* / automatic
+3. Confirm the Apple Developer team is connected and has a macOS distribution
+   certificate
+
 ## Build action vs Archive action
 
 The command
