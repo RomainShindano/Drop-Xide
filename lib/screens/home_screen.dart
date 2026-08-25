@@ -7,7 +7,7 @@ import '../providers/publish_provider.dart';
 import '../providers/settings_provider.dart';
 import '../models/build_history.dart';
 import '../models/publish_history.dart';
-import '../widgets/project_list_widget.dart';
+import '../widgets/project_details_widget.dart';
 import '../widgets/build_config_widget.dart';
 import '../widgets/build_history_widget.dart';
 import '../widgets/build_queue_widget.dart';
@@ -111,6 +111,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 leading: const MacosIcon(CupertinoIcons.doc_text),
                 label: Text('Logs', style: sidebarText),
               ),
+              const SidebarItem(
+                leading: MacosIcon(CupertinoIcons.list_bullet),
+                label: Text('Build Queue'),
+              ),
+              const SidebarItem(
+                leading: MacosIcon(CupertinoIcons.square_on_square),
+                label: Text('Templates'),
+              ),
               SidebarItem(
                 leading: const MacosIcon(CupertinoIcons.cloud_upload),
                 label: Text('Publish', style: sidebarText),
@@ -132,53 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           );
         },
-        bottom: selected == null
-            ? null
-            : Padding(
-                padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
-                child: HoverSurface(
-                  selected: _pageIndex == 1,
-                  onTap: () => _goTo(1),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  child: Row(
-                    children: [
-                      MacosIcon(
-                        CupertinoIcons.folder_fill,
-                        size: 14,
-                        color: MacosTheme.of(context).primaryColor,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Selected',
-                              style: typography.caption2.copyWith(
-                                color: MacosColors.secondaryLabelColor
-                                    .resolveFrom(context),
-                              ),
-                            ),
-                            Text(
-                              selected.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: typography.caption1.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const MacosIcon(
-                        CupertinoIcons.chevron_right,
-                        size: 12,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+        bottom: null,
       ),
       child: IndexedStack(
         index: _pageIndex,
@@ -190,6 +152,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           _BuildPage(onRefresh: _refreshData),
           _HistoryPage(onRefresh: _refreshData),
+          _BuildQueuePage(onRefresh: _refreshData),
+          _BuildTemplatesPage(onRefresh: _refreshData),
           _PublishPage(onRefresh: _refreshData),
           _PublishHistoryPage(onRefresh: _refreshData),
           const _SettingsPage(),
@@ -212,6 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _refreshData() {
     context.read<ProjectProvider>().loadProjects();
     context.read<BuildProvider>().loadBuildHistory();
+    context.read<BuildProvider>().loadTemplates();
     context.read<PublishProvider>().loadPublishHistory();
   }
 }
@@ -413,6 +378,70 @@ class _PublishPage extends StatelessWidget {
         ContentArea(
           builder: (context, scrollController) {
             return const GooglePlayPublishWidget();
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _BuildQueuePage extends StatelessWidget {
+  final VoidCallback onRefresh;
+
+  const _BuildQueuePage({required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    return MacosScaffold(
+      toolBar: ToolBar(
+        title: const Text('Build Queue'),
+        titleWidth: 120,
+        actions: [
+          ToolBarIconButton(
+            label: 'Refresh',
+            icon: const MacosIcon(CupertinoIcons.refresh),
+            onPressed: onRefresh,
+            showLabel: false,
+            tooltipMessage: 'Refresh',
+          ),
+        ],
+      ),
+      children: [
+        ContentArea(
+          builder: (context, scrollController) {
+            return const BuildQueueWidget();
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _BuildTemplatesPage extends StatelessWidget {
+  final VoidCallback onRefresh;
+
+  const _BuildTemplatesPage({required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    return MacosScaffold(
+      toolBar: ToolBar(
+        title: const Text('Build Templates'),
+        titleWidth: 140,
+        actions: [
+          ToolBarIconButton(
+            label: 'Refresh',
+            icon: const MacosIcon(CupertinoIcons.refresh),
+            onPressed: onRefresh,
+            showLabel: false,
+            tooltipMessage: 'Refresh',
+          ),
+        ],
+      ),
+      children: [
+        ContentArea(
+          builder: (context, scrollController) {
+            return const BuildTemplatesWidget();
           },
         ),
       ],

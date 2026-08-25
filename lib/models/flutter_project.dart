@@ -54,6 +54,7 @@ class BuildConfig {
   final BuildPlatform platform;
   final BuildType? buildType;
   final String? flavor;
+  final String? branch;
   final bool obfuscate;
   final bool splitDebugInfo;
 
@@ -62,6 +63,7 @@ class BuildConfig {
     required this.platform,
     this.buildType,
     this.flavor,
+    this.branch,
     this.obfuscate = false,
     this.splitDebugInfo = false,
   });

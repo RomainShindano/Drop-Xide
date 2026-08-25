@@ -39,6 +39,7 @@ BuildConfig _$BuildConfigFromJson(Map<String, dynamic> json) => BuildConfig(
   platform: $enumDecode(_$BuildPlatformEnumMap, json['platform']),
   buildType: $enumDecodeNullable(_$BuildTypeEnumMap, json['buildType']),
   flavor: json['flavor'] as String?,
+  branch: json['branch'] as String?,
   obfuscate: json['obfuscate'] as bool? ?? false,
   splitDebugInfo: json['splitDebugInfo'] as bool? ?? false,
 );
