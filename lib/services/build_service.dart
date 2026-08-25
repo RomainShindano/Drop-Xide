@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/build_history.dart';
 import '../models/flutter_project.dart';
+import 'artifact_storage_service.dart';
 import 'database_service.dart';
 import 'flutter_sdk_service.dart';
 import 'git_service.dart';
@@ -18,6 +19,7 @@ class BuildService {
   final ProjectService _projectService = ProjectService();
   final FlutterSdkService _sdkService = FlutterSdkService();
   final GitService _gitService = GitService();
+  final ArtifactStorageService _artifactStorage = ArtifactStorageService.instance;
   final _uuid = const Uuid();
 
   final _buildStreamController = StreamController<BuildHistory>.broadcast();
@@ -57,10 +59,14 @@ class BuildService {
         platform: config.platform,
         buildType: config.buildType,
         flavor: config.flavor,
+        branch: config.branch,
         obfuscate: true,
         splitDebugInfo: true,
       );
     }
+
+    // Get the next build number for this project
+    final buildNumber = await _artifactStorage.getNextBuildNumber(project.id);
 
     final buildHistory = BuildHistory(
       id: _uuid.v4(),
@@ -70,6 +76,7 @@ class BuildService {
       startedAt: DateTime.now(),
       status: BuildStatus.running,
       logs: [],
+      buildNumber: buildNumber,
     );
 
     _logsByBuild[buildHistory.id] = [];
@@ -114,6 +121,7 @@ class BuildService {
       final command = _buildFlutterArgs(config, outputDir);
 
       await _appendLog(current.id, 'Starting build for ${project.name}...');
+      await _appendLog(current.id, 'Build Number: #${current.buildNumber}');
       if (config.branch != null && config.branch!.isNotEmpty) {
         await _appendLog(current.id, 'Branch: ${config.branch}');
       }
@@ -179,10 +187,42 @@ class BuildService {
         outputDir: outputDir,
       );
 
+      // Store artifact with versioning
+      String? storedArtifactPath;
+      int? artifactSize;
+      
+      if (artifactPath != null) {
+        await _appendLog(current.id, 'Storing build artifact...');
+        storedArtifactPath = await _artifactStorage.storeArtifact(
+          projectId: project.id,
+          projectName: project.name,
+          buildNumber: current.buildNumber,
+          sourcePath: artifactPath,
+          platform: config.platform.name,
+          mode: config.mode.name,
+        );
+        
+        if (storedArtifactPath != null) {
+          artifactSize = await _artifactStorage.getArtifactSize(storedArtifactPath);
+          await _appendLog(
+            current.id,
+            'Artifact stored: ${path.basename(storedArtifactPath)}',
+          );
+          if (artifactSize != null) {
+            await _appendLog(
+              current.id,
+              'Artifact size: ${_artifactStorage.formatBytes(artifactSize)}',
+            );
+          }
+        }
+      }
+
       current = current.copyWith(
         status: BuildStatus.success,
         completedAt: DateTime.now(),
         outputPath: artifactPath ?? outputDir,
+        artifactPath: storedArtifactPath,
+        artifactSize: artifactSize,
         logs: List.unmodifiable(_logsByBuild[current.id] ?? const []),
       );
 

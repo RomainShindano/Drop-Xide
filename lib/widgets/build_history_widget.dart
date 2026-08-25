@@ -249,16 +249,40 @@ class _HistoryRow extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            history.projectName,
-                            style: typography.headline.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: context.dxLabel,
-                            ),
+                          Row(
+                            children: [
+                              Text(
+                                history.projectName,
+                                style: typography.headline.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: context.dxLabel,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: MacosColors.controlBackgroundColor
+                                      .resolveFrom(context),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '#${history.buildNumber}',
+                                  style: typography.caption2.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: secondary,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${history.buildConfig.platform.name.toUpperCase()} · ${history.buildConfig.mode.name}',
+                            '${history.buildConfig.platform.name.toUpperCase()} · ${history.buildConfig.mode.name}'
+                            '${history.artifactPath != null ? " · ${history.artifactSizeFormatted}" : ""}',
                             style:
                                 typography.caption1.copyWith(color: secondary),
                           ),
@@ -319,6 +343,16 @@ class _HistoryRow extends StatelessWidget {
                         secondary: true,
                         leadingIcon: CupertinoIcons.folder,
                         onPressed: () => _openOutputFolder(context),
+                      ),
+                    ],
+                    if (history.artifactPath != null && history.status == BuildStatus.success) ...[
+                      const SizedBox(width: 8),
+                      SleekButton.label(
+                        label: 'View artifact',
+                        size: SleekButtonSize.small,
+                        secondary: false,
+                        leadingIcon: CupertinoIcons.square_arrow_down,
+                        onPressed: () => _revealArtifact(context),
                       ),
                     ],
                     const Spacer(),
@@ -466,6 +500,72 @@ class _HistoryRow extends StatelessWidget {
             style: MacosTheme.of(context).typography.headline,
           ),
           message: Text('$e', textAlign: TextAlign.center),
+          primaryButton: PushButton(
+            controlSize: ControlSize.large,
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _revealArtifact(BuildContext context) async {
+    if (history.artifactPath == null) return;
+
+    try {
+      final file = File(history.artifactPath!);
+      if (!await file.exists()) {
+        if (!context.mounted) return;
+        await showMacosAlertDialog(
+          context: context,
+          builder: (_) => MacosAlertDialog(
+            appIcon: const MacosIcon(
+              CupertinoIcons.exclamationmark_triangle_fill,
+              size: 64,
+              color: MacosColors.systemOrangeColor,
+            ),
+            title: Text(
+              'Artifact Not Found',
+              style: MacosTheme.of(context).typography.headline,
+            ),
+            message: const Text(
+              'The build artifact file no longer exists.',
+              textAlign: TextAlign.center,
+            ),
+            primaryButton: PushButton(
+              controlSize: ControlSize.large,
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ),
+        );
+        return;
+      }
+
+      if (Platform.isMacOS) {
+        await Process.run('open', ['-R', history.artifactPath!]);
+      } else if (Platform.isWindows) {
+        await Process.run('explorer', ['/select,', history.artifactPath!]);
+      } else if (Platform.isLinux) {
+        final parentDir = file.parent.path;
+        await Process.run('xdg-open', [parentDir]);
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      await showMacosAlertDialog(
+        context: context,
+        builder: (_) => MacosAlertDialog(
+          appIcon: const MacosIcon(
+            CupertinoIcons.exclamationmark_triangle_fill,
+            size: 64,
+            color: MacosColors.systemOrangeColor,
+          ),
+          title: Text(
+            'Error',
+            style: MacosTheme.of(context).typography.headline,
+          ),
+          message: Text('Failed to reveal artifact: $e', textAlign: TextAlign.center),
           primaryButton: PushButton(
             controlSize: ControlSize.large,
             onPressed: () => Navigator.of(context).pop(),

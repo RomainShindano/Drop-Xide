@@ -19,7 +19,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -53,6 +53,9 @@ class DatabaseService {
         output_path TEXT,
         error_message TEXT,
         logs TEXT,
+        build_number INTEGER NOT NULL DEFAULT 1,
+        artifact_path TEXT,
+        artifact_size INTEGER,
         FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
       )
     ''');
@@ -184,6 +187,27 @@ class DatabaseService {
       await db.execute('''
         CREATE INDEX IF NOT EXISTS idx_build_templates_favorite
         ON build_templates(is_favorite DESC, last_used_at DESC)
+      ''');
+    }
+    
+    if (oldVersion < 3) {
+      // Add build number and artifact tracking to build_history (from v2 to v3)
+      await db.execute('''
+        ALTER TABLE build_history ADD COLUMN build_number INTEGER NOT NULL DEFAULT 1
+      ''');
+      
+      await db.execute('''
+        ALTER TABLE build_history ADD COLUMN artifact_path TEXT
+      ''');
+      
+      await db.execute('''
+        ALTER TABLE build_history ADD COLUMN artifact_size INTEGER
+      ''');
+      
+      // Create index for build numbers per project
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_build_history_build_number
+        ON build_history(project_id, build_number DESC)
       ''');
     }
   }
