@@ -195,37 +195,111 @@ class _ProjectsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MacosScaffold(
-      toolBar: ToolBar(
-        title: Text('Projects', style: MacosTheme.of(context).typography.headline),
-        titleWidth: 120,
-        actions: [
-          ToolBarIconButton(
-            label: 'Add Project',
-            icon: const MacosIcon(CupertinoIcons.add),
-            onPressed: onAddProject,
-            showLabel: false,
-            tooltipMessage: 'Add Project',
+    return Consumer<ProjectProvider>(
+      builder: (context, projectProvider, child) {
+        final projects = projectProvider.projects;
+        final selectedProject = projectProvider.selectedProject;
+
+        return MacosScaffold(
+          toolBar: ToolBar(
+            title: Text('Project Details', style: MacosTheme.of(context).typography.headline),
+            titleWidth: 140,
+            leading: projects.isNotEmpty
+                ? CustomToolbarItem(
+                    inToolbarBuilder: (context) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: SizedBox(
+                        width: 220,
+                        child: MacosPopupButton<String?>(
+                          value: selectedProject?.id,
+                          onChanged: (projectId) {
+                            if (projectId != null) {
+                              final project = projects.firstWhere(
+                                (p) => p.id == projectId,
+                              );
+                              projectProvider.selectProject(project);
+                            }
+                          },
+                          items: projects
+                              .map(
+                                (project) => MacosPopupMenuItem(
+                                  value: project.id,
+                                  child: Row(
+                                    children: [
+                                      const MacosIcon(
+                                        CupertinoIcons.folder,
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          project.name,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                    ),
+                  )
+                : null,
+            actions: [
+              ToolBarIconButton(
+                label: 'Add Project',
+                icon: const MacosIcon(CupertinoIcons.add),
+                onPressed: onAddProject,
+                showLabel: false,
+                tooltipMessage: 'Add Project',
+              ),
+              ToolBarIconButton(
+                label: 'Refresh',
+                icon: const MacosIcon(CupertinoIcons.refresh),
+                onPressed: onRefresh,
+                showLabel: false,
+                tooltipMessage: 'Refresh',
+              ),
+            ],
           ),
-          ToolBarIconButton(
-            label: 'Refresh',
-            icon: const MacosIcon(CupertinoIcons.refresh),
-            onPressed: onRefresh,
-            showLabel: false,
-            tooltipMessage: 'Refresh',
-          ),
-        ],
-      ),
-      children: [
-        ContentArea(
-          builder: (context, scrollController) {
-            return ProjectListWidget(
-              onAddProject: onAddProject,
-              onOpenBuild: onOpenBuild,
-            );
-          },
-        ),
-      ],
+          children: [
+            ContentArea(
+              builder: (context, scrollController) {
+                if (projectProvider.isLoading) {
+                  return const Center(child: ProgressCircle());
+                }
+
+                if (projectProvider.error != null) {
+                  return EmptyState(
+                    icon: CupertinoIcons.exclamationmark_circle,
+                    title: 'Couldn't load projects',
+                    message: projectProvider.error!,
+                    actionLabel: 'Retry',
+                    onAction: projectProvider.loadProjects,
+                  );
+                }
+
+                if (projects.isEmpty) {
+                  return EmptyState(
+                    icon: CupertinoIcons.folder_badge_plus,
+                    title: 'No projects yet',
+                    message:
+                        'Add a Flutter project to start configuring builds and tracking history.',
+                    actionLabel: 'Add Project',
+                    onAction: onAddProject,
+                  );
+                }
+
+                return ProjectDetailsWidget(
+                  onAddProject: onAddProject,
+                );
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 }
