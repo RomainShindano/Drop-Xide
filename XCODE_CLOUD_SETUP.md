@@ -29,9 +29,9 @@ It never contains the cause. The real error is earlier in the log.
 To find it in Xcode Cloud:
 
 1. Open the failed build → **Logs**
-2. Open **Post-clone** first. `ci_post_clone.sh` now runs a full
-   `flutter build macos --release --verbose`, so a Flutter/Dart/plugin error
-   appears there with a readable message.
+2. Open **Post-clone** first. `ci_post_clone.sh` runs `flutter build macos
+   --config-only` and then an `xcodebuild` compile check with signing disabled,
+   so Dart/Swift/plugin errors appear there with a readable message.
 3. If post-clone passed, open the **Build** / **Archive** step and expand the
    first red row (not the summary). Useful search terms:
    - `error:`
@@ -63,25 +63,56 @@ usable certificate for team `6C7TC4A89K`. Fix it in the workflow:
 3. Confirm the Apple Developer team is connected and has a macOS distribution
    certificate
 
-## Build action vs Archive action
+## "Build succeeded but I can't send it to TestFlight"
 
-The command
+Symptom: the workflow's **TestFlight Internal Testing** post-action shows an
+empty **Artifact** dropdown (highlighted red with `-`) and cannot be saved.
+
+Cause: the workflow uses a **Build** action. A Build action only compiles —
 
 ```
 xcodebuild build -scheme Runner ... CODE_SIGN_IDENTITY=- AD_HOC_CODE_SIGNING_ALLOWED=YES
 ```
 
-is Xcode Cloud's **Build** action with ad-hoc signing. It compiles only and
-**cannot produce a TestFlight build**. For TestFlight you need an **Archive**
-action in the workflow (with your team's signing), plus a TestFlight post-action.
+Note `build` (not `archive`) and ad-hoc signing. It produces no archive, so the
+TestFlight post-action has no artifact to distribute. A green build is expected
+here; it just isn't a distributable one.
+
+Fix: use an **Archive** action instead.
+
+1. Xcode Cloud → workflow → **Edit Workflow**
+2. Under **Actions**, click **+** and add **Archive**
+   - Platform: **macOS**
+   - Scheme: **Runner**
+   - Deployment Preparation: **TestFlight and App Store**
+     (or *TestFlight Internal Testing Only*)
+3. Delete the old **Build - macOS** action (optional, but it doubles build time)
+4. Open the **TestFlight Internal Testing** post-action — **Artifact** now
+   offers the archive. Select it.
+5. Set **Groups** to at least one internal tester group (it currently reads
+   `None`, so nobody would receive the build)
+6. **Save**, then start a new build
+
+The Archive action builds the **Release** configuration, which uses
+`Runner/Release.entitlements` (App Sandbox + hardened runtime) — the correct
+configuration for TestFlight and the Mac App Store.
+
+### Also required for macOS TestFlight
+
+- App Store Connect must contain a **macOS** app record whose bundle ID is
+  exactly `com.oxidetech.dropXide`
+- The build number must increase for each upload. It comes from `pubspec.yaml`
+  (`version: 1.0.0+1` → `CFBundleVersion = 1`), so bump the `+N` suffix before
+  re-uploading the same version.
 
 ## Xcode Cloud checklist
 
 1. Platform: **macOS**
-2. Scheme: **Runner** (`macos/Runner.xcodeproj` / workspace)
-3. Env: `FLUTTER_VERSION` = `stable` (or `3.47.1`)
-4. Signing: Automatic, team `6C7TC4A89K`
-5. Post-action: TestFlight (Mac)
+2. Scheme: **Runner** (`macos/Runner.xcodeproj`)
+3. Action: **Archive** (not Build) — required for TestFlight
+4. Env: `FLUTTER_VERSION` = `stable` (or `3.47.1`)
+5. Signing: Automatic, team `6C7TC4A89K`
+6. Post-action: TestFlight Internal Testing, with an artifact **and** a group selected
 
 ## Local recovery
 
