@@ -193,7 +193,10 @@ class _ProjectInfoSection extends StatelessWidget {
               ],
               if (project.description != null) ...[
                 const SizedBox(height: 16),
-                const Divider(),
+                Container(
+                  height: 1,
+                  color: MacosColors.separatorColor.withValues(alpha: 0.55),
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Description',
@@ -257,7 +260,7 @@ class _GitInfoSection extends StatelessWidget {
               _InfoRow(
                 label: 'Current Branch',
                 value: currentBranch ?? 'Unknown',
-                icon: CupertinoIcons.branch,
+                icon: CupertinoIcons.arrow_branch,
               ),
               const SizedBox(height: 12),
               _InfoRow(
@@ -267,7 +270,10 @@ class _GitInfoSection extends StatelessWidget {
               ),
               if (branches.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                const Divider(),
+                Container(
+                  height: 1,
+                  color: MacosColors.separatorColor.withValues(alpha: 0.55),
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Branches',
@@ -296,7 +302,7 @@ class _GitInfoSection extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           MacosIcon(
-                            CupertinoIcons.branch,
+                            CupertinoIcons.arrow_branch,
                             size: 12,
                             color: isCurrent
                                 ? MacosTheme.of(context).primaryColor
@@ -413,7 +419,7 @@ class _BuildInfoSection extends StatelessWidget {
                 _InfoRow(
                   label: 'Branch',
                   value: config.branch!,
-                  icon: CupertinoIcons.branch,
+                  icon: CupertinoIcons.arrow_branch,
                 ),
               ],
             ],
@@ -564,18 +570,4 @@ class _CommitRow extends StatelessWidget {
     if (difference.inDays < 7) return '${difference.inDays}d ago';
     return DateFormat('MMM d').format(date);
   }
-}
-
-class GitCommit {
-  final String hash;
-  final String message;
-  final String author;
-  final DateTime date;
-
-  GitCommit({
-    required this.hash,
-    required this.message,
-    required this.author,
-    required this.date,
-  });
 }

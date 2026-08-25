@@ -7,6 +7,7 @@ import '../providers/publish_provider.dart';
 import '../providers/settings_provider.dart';
 import '../models/build_history.dart';
 import '../models/publish_history.dart';
+import '../widgets/project_list_widget.dart';
 import '../widgets/project_details_widget.dart';
 import '../widgets/build_config_widget.dart';
 import '../widgets/build_history_widget.dart';
