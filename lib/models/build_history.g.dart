@@ -23,6 +23,9 @@ BuildHistory _$BuildHistoryFromJson(Map<String, dynamic> json) => BuildHistory(
   logs:
       (json['logs'] as List<dynamic>?)?.map((e) => e as String).toList() ??
       const [],
+  buildNumber: json['buildNumber'] as int? ?? 1,
+  artifactPath: json['artifactPath'] as String?,
+  artifactSize: json['artifactSize'] as int?,
 );
 
 Map<String, dynamic> _$BuildHistoryToJson(BuildHistory instance) =>
@@ -37,6 +40,9 @@ Map<String, dynamic> _$BuildHistoryToJson(BuildHistory instance) =>
       'outputPath': instance.outputPath,
       'errorMessage': instance.errorMessage,
       'logs': instance.logs,
+      'buildNumber': instance.buildNumber,
+      'artifactPath': instance.artifactPath,
+      'artifactSize': instance.artifactSize,
     };
 
 const _$BuildStatusEnumMap = {
