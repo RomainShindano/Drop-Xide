@@ -52,6 +52,9 @@ dependencies:
   window_manager: ^0.5.2
   macos_ui: ^2.2.2
   _discoveryapis_commons: ^1.0.7
+  
+  # Notifications
+  local_notifier: ^0.1.6
 
 dev_dependencies:
   flutter_test:
