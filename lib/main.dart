@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'screens/home_screen.dart';
 import 'providers/project_provider.dart';
 import 'providers/build_provider.dart';
+import 'providers/publish_provider.dart';
 import 'providers/settings_provider.dart';
 import 'constants/app_theme.dart';
 
@@ -26,12 +27,14 @@ void main() async {
 
   final projectProvider = ProjectProvider()..loadProjects();
   final buildProvider = BuildProvider()..loadBuildHistory();
+  final publishProvider = PublishProvider()..loadPublishHistory();
   buildProvider.onProjectUpdated = projectProvider.applyLocalUpdate;
 
   runApp(
     MyApp(
       projectProvider: projectProvider,
       buildProvider: buildProvider,
+      publishProvider: publishProvider,
     ),
   );
 }
@@ -39,11 +42,13 @@ void main() async {
 class MyApp extends StatelessWidget {
   final ProjectProvider projectProvider;
   final BuildProvider buildProvider;
+  final PublishProvider publishProvider;
 
   const MyApp({
     super.key,
     required this.projectProvider,
     required this.buildProvider,
+    required this.publishProvider,
   });
 
   @override
@@ -52,6 +57,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider.value(value: projectProvider),
         ChangeNotifierProvider.value(value: buildProvider),
+        ChangeNotifierProvider.value(value: publishProvider),
         ChangeNotifierProvider(
           create: (_) => SettingsProvider()..load(),
         ),
