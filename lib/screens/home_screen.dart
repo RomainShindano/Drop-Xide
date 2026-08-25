@@ -10,6 +10,8 @@ import '../models/publish_history.dart';
 import '../widgets/project_list_widget.dart';
 import '../widgets/build_config_widget.dart';
 import '../widgets/build_history_widget.dart';
+import '../widgets/build_queue_widget.dart';
+import '../widgets/build_templates_widget.dart';
 import '../widgets/google_play_publish_widget.dart';
 import '../widgets/publish_history_widget.dart';
 import '../widgets/settings_widget.dart';

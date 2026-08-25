@@ -110,6 +110,7 @@ class DatabaseService {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
+      // Add publish_history table (from v1 to v2)
       await db.execute('''
         CREATE TABLE IF NOT EXISTS publish_history (
           id TEXT PRIMARY KEY,
@@ -138,6 +139,51 @@ class DatabaseService {
       await db.execute('''
         CREATE INDEX IF NOT EXISTS idx_publish_history_started_at
         ON publish_history(started_at DESC)
+      ''');
+      
+      // Add build_queue and build_templates tables
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS build_queue (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          project_name TEXT NOT NULL,
+          build_config TEXT NOT NULL,
+          queued_at INTEGER NOT NULL,
+          started_at INTEGER,
+          completed_at INTEGER,
+          status TEXT NOT NULL,
+          priority INTEGER NOT NULL DEFAULT 0,
+          build_history_id TEXT,
+          FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
+          FOREIGN KEY (build_history_id) REFERENCES build_history (id) ON DELETE SET NULL
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS build_templates (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          description TEXT,
+          build_config TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          last_used_at INTEGER,
+          usage_count INTEGER NOT NULL DEFAULT 0,
+          is_favorite INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_build_queue_status ON build_queue(status)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_build_queue_priority
+        ON build_queue(priority DESC, queued_at ASC)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_build_templates_favorite
+        ON build_templates(is_favorite DESC, last_used_at DESC)
       ''');
     }
   }
