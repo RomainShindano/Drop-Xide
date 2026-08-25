@@ -21,6 +21,36 @@ DropXide is a **macOS desktop app**. Native plugins are linked with
 6. CI creates empty `FlutterInputs.xcfilelist` / `FlutterOutputs.xcfilelist` before
    xcodebuild (fixes `Unable to load contents of file list` on Flutter Assemble)
 
+## Reading `exit-code: 65`
+
+`xcodebuild ... exited with non-zero exit-code: 65` is a **generic** build failure.
+It never contains the cause. The real error is earlier in the log.
+
+To find it in Xcode Cloud:
+
+1. Open the failed build → **Logs**
+2. Open **Post-clone** first. `ci_post_clone.sh` now runs a full
+   `flutter build macos --release --verbose`, so a Flutter/Dart/plugin error
+   appears there with a readable message.
+3. If post-clone passed, open the **Build** / **Archive** step and expand the
+   first red row (not the summary). Useful search terms:
+   - `error:`
+   - `No profiles for`
+   - `Unable to resolve module`
+   - `Command PhaseScriptExecution failed`
+
+## Build action vs Archive action
+
+The command
+
+```
+xcodebuild build -scheme Runner ... CODE_SIGN_IDENTITY=- AD_HOC_CODE_SIGNING_ALLOWED=YES
+```
+
+is Xcode Cloud's **Build** action with ad-hoc signing. It compiles only and
+**cannot produce a TestFlight build**. For TestFlight you need an **Archive**
+action in the workflow (with your team's signing), plus a TestFlight post-action.
+
 ## Xcode Cloud checklist
 
 1. Platform: **macOS**

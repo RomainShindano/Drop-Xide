@@ -1,7 +1,9 @@
 #!/bin/sh
 #
 # Xcode Cloud pre-xcodebuild hook for DropXide (macOS / SPM).
-# Ensures ephemeral Flutter file lists exist before xcodebuild parses the project.
+#
+# Last check before xcodebuild. Anything missing here becomes an opaque
+# "exit-code: 65", so fail with an explicit message instead.
 #
 set -euo pipefail
 
@@ -14,61 +16,51 @@ export FLUTTER_ROOT="$FLUTTER_HOME"
 
 cd "$CI_PRIMARY_REPOSITORY_PATH/$FLUTTER_PROJECT_PATH"
 
-flutter config --enable-swift-package-manager >/dev/null 2>&1 || true
-
 EPHEMERAL_DIR="macos/Flutter/ephemeral"
-INPUTS_LIST="$EPHEMERAL_DIR/FlutterInputs.xcfilelist"
-OUTPUTS_LIST="$EPHEMERAL_DIR/FlutterOutputs.xcfilelist"
 GENERATED_XCCONFIG="$EPHEMERAL_DIR/Flutter-Generated.xcconfig"
 PACKAGE_SWIFT="$EPHEMERAL_DIR/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift"
 
-# Must exist before xcodebuild loads the Flutter Assemble target
 mkdir -p "$EPHEMERAL_DIR"
-[ -f "$INPUTS_LIST" ] || : > "$INPUTS_LIST"
-[ -f "$OUTPUTS_LIST" ] || : > "$OUTPUTS_LIST"
+for list in FlutterInputs FlutterOutputs; do
+  path="$EPHEMERAL_DIR/$list.xcfilelist"
+  [ -f "$path" ] || : > "$path"
+done
 [ -f "$EPHEMERAL_DIR/tripwire" ] || touch "$EPHEMERAL_DIR/tripwire"
 
 if [ ! -f "$GENERATED_XCCONFIG" ] || [ ! -f "$PACKAGE_SWIFT" ]; then
-  echo "=== Regenerating Flutter ephemeral / SPM package ==="
+  echo "Flutter generated files missing; regenerating"
   flutter pub get
-  if flutter build macos -h 2>/dev/null | grep -q -- '--config-only'; then
-    flutter build macos --config-only
-  fi
-  # Re-ensure lists after regenerate
-  mkdir -p "$EPHEMERAL_DIR"
-  [ -f "$INPUTS_LIST" ] || : > "$INPUTS_LIST"
-  [ -f "$OUTPUTS_LIST" ] || : > "$OUTPUTS_LIST"
+  flutter build macos --config-only
 fi
 
+fail=0
+
 if [ ! -f "$GENERATED_XCCONFIG" ]; then
-  echo "ERROR: $GENERATED_XCCONFIG still missing."
-  exit 1
+  echo "ERROR: missing $GENERATED_XCCONFIG (Xcode cannot resolve FLUTTER_ROOT)"
+  fail=1
+elif ! grep -q '^FLUTTER_ROOT=' "$GENERATED_XCCONFIG"; then
+  echo "ERROR: FLUTTER_ROOT not set in $GENERATED_XCCONFIG"
+  cat "$GENERATED_XCCONFIG"
+  fail=1
 fi
 
 if [ ! -f "$PACKAGE_SWIFT" ]; then
-  echo "ERROR: $PACKAGE_SWIFT still missing."
-  exit 1
-fi
-
-if ! grep -q 'window_manager\|macos_ui\|shared_preferences_foundation\|sqflite_darwin' "$PACKAGE_SWIFT"; then
-  echo "ERROR: Package.swift still has no plugin dependencies:"
+  echo "ERROR: missing $PACKAGE_SWIFT (plugin modules will not resolve)"
+  fail=1
+elif ! grep -q 'window_manager\|macos_ui\|shared_preferences_foundation\|sqflite_darwin' "$PACKAGE_SWIFT"; then
+  echo "ERROR: $PACKAGE_SWIFT has no plugin dependencies:"
   cat "$PACKAGE_SWIFT"
-  exit 1
+  fail=1
 fi
 
-if ! grep -q '^FLUTTER_ROOT=' "$GENERATED_XCCONFIG"; then
-  echo "ERROR: FLUTTER_ROOT not found in $GENERATED_XCCONFIG"
-  cat "$GENERATED_XCCONFIG"
-  exit 1
-fi
-
-if [ ! -f "$INPUTS_LIST" ] || [ ! -f "$OUTPUTS_LIST" ]; then
-  echo "ERROR: Flutter xcfilelists missing."
+if [ "$fail" -ne 0 ]; then
+  echo "Failing now so the cause is visible instead of xcodebuild exit-code 65."
   exit 1
 fi
 
 rm -rf ~/Library/Caches/org.swift.swiftpm/artifacts 2>/dev/null || true
 
-echo "=== Flutter SPM + xcfilelists ready for xcodebuild ==="
-ls -la "$INPUTS_LIST" "$OUTPUTS_LIST"
+echo "=== Ready for xcodebuild ==="
+echo "Action: ${CI_XCODEBUILD_ACTION:-<unset>}  Scheme: ${CI_XCODE_SCHEME:-<unset>}"
+ls -la "$EPHEMERAL_DIR"
 exit 0

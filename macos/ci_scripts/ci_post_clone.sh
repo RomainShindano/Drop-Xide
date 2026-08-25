@@ -2,19 +2,34 @@
 #
 # Xcode Cloud post-clone hook for DropXide (macOS / Swift Package Manager).
 #
+# Strategy: run a COMPLETE `flutter build macos` here, before Xcode Cloud runs
+# its own xcodebuild. Flutter prints readable errors; Xcode Cloud only reports
+# "Command exited with non-zero exit-code: 65". If something is wrong, this
+# script fails with the real reason instead of an opaque xcodebuild failure.
+#
 # Required environment variable:
 #   FLUTTER_VERSION  e.g. stable or 3.47.1
 #
 set -euo pipefail
 
-echo "=== DropXide Xcode Cloud: post-clone (macOS / SPM) ==="
+echo "=============================================="
+echo "DropXide Xcode Cloud: post-clone (macOS / SPM)"
+echo "=============================================="
 
 FLUTTER_VERSION="${FLUTTER_VERSION:-stable}"
 FLUTTER_PROJECT_PATH="${FLUTTER_PROJECT_PATH:-.}"
 FLUTTER_HOME="${FLUTTER_HOME:-$HOME/flutter}"
 
+echo "--- Environment ---"
+echo "FLUTTER_VERSION=$FLUTTER_VERSION"
+echo "CI_XCODEBUILD_ACTION=${CI_XCODEBUILD_ACTION:-<unset>}"
+echo "CI_XCODE_SCHEME=${CI_XCODE_SCHEME:-<unset>}"
+echo "CI_WORKFLOW=${CI_WORKFLOW:-<unset>}"
+sw_vers || true
+xcodebuild -version || true
+
 if [ ! -x "$FLUTTER_HOME/bin/flutter" ]; then
-  echo "=== Installing Flutter ($FLUTTER_VERSION) ==="
+  echo "--- Installing Flutter ($FLUTTER_VERSION) ---"
   git clone https://github.com/flutter/flutter.git --depth 1 -b "$FLUTTER_VERSION" "$FLUTTER_HOME"
 fi
 
@@ -28,78 +43,61 @@ flutter config --enable-macos-desktop
 cd "$CI_PRIMARY_REPOSITORY_PATH/$FLUTTER_PROJECT_PATH"
 
 EPHEMERAL_DIR="macos/Flutter/ephemeral"
-INPUTS_LIST="$EPHEMERAL_DIR/FlutterInputs.xcfilelist"
-OUTPUTS_LIST="$EPHEMERAL_DIR/FlutterOutputs.xcfilelist"
 GENERATED_XCCONFIG="$EPHEMERAL_DIR/Flutter-Generated.xcconfig"
-PACKAGE_DIR="$EPHEMERAL_DIR/Packages/FlutterGeneratedPluginSwiftPackage"
-PACKAGE_SWIFT="$PACKAGE_DIR/Package.swift"
+PACKAGE_SWIFT="$EPHEMERAL_DIR/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift"
 
-# Xcode's "Flutter Assemble" target references these file lists in the pbxproj.
-# They are gitignored (ephemeral/) and must exist before xcodebuild parses the
-# project, otherwise:
-#   Unable to load contents of file list: '.../FlutterInputs.xcfilelist'
-# Flutter itself creates empty lists when missing (see build_macos.dart).
-echo "=== Creating ephemeral Flutter xcfilelists (required before xcodebuild) ==="
-mkdir -p "$EPHEMERAL_DIR"
-: > "$INPUTS_LIST"
-: > "$OUTPUTS_LIST"
-touch "$EPHEMERAL_DIR/tripwire"
+echo "--- flutter doctor ---"
+flutter doctor -v || true
 
-echo "=== Precache macOS artifacts ==="
-flutter precache --macos
-
-echo "=== flutter pub get ==="
+echo "--- flutter pub get ---"
 flutter pub get
 
-# Prefer Flutter's config-only path when available (macOS CI).
-if flutter build macos -h 2>/dev/null | grep -q -- '--config-only'; then
-  echo "=== flutter build macos --config-only ==="
-  flutter build macos --config-only
-elif [ -x "$FLUTTER_ROOT/packages/flutter_tools/bin/macos_assemble.sh" ]; then
-  echo "=== macos_assemble.sh prepare ==="
-  (
-    cd macos
-    # Provide minimal env so prepare can write Generated.xcconfig / file lists
-    export FLUTTER_APPLICATION_PATH="$CI_PRIMARY_REPOSITORY_PATH/$FLUTTER_PROJECT_PATH"
-    export FLUTTER_TARGET=lib/main.dart
-    export FLUTTER_BUILD_DIR=build
-    export CONFIGURATION=Release
-    export ACTION=build
-    export SRCROOT="$PWD"
-    "$FLUTTER_ROOT/packages/flutter_tools/bin/macos_assemble.sh" prepare || true
-  )
-fi
-
-# Ensure file lists still exist (config-only / prepare may rewrite them)
-mkdir -p "$EPHEMERAL_DIR"
-[ -f "$INPUTS_LIST" ] || : > "$INPUTS_LIST"
-[ -f "$OUTPUTS_LIST" ] || : > "$OUTPUTS_LIST"
-
-if [ ! -f "$GENERATED_XCCONFIG" ]; then
-  echo "ERROR: $GENERATED_XCCONFIG was not generated."
-  ls -la "$EPHEMERAL_DIR" || true
+# A full build materializes everything Xcode needs (Flutter-Generated.xcconfig,
+# the SPM plugin package, xcfilelists with real contents) and surfaces any
+# Dart/Swift/plugin error with a readable message.
+echo "--- flutter build macos --release (full build to surface real errors) ---"
+if ! flutter build macos --release --verbose; then
+  echo ""
+  echo "=============================================="
+  echo "FLUTTER BUILD FAILED"
+  echo "This is the real cause of the Xcode Cloud"
+  echo "'exit-code: 65' failure. See the Flutter error above."
+  echo "=============================================="
   exit 1
 fi
 
-if [ ! -f "$PACKAGE_SWIFT" ]; then
-  echo "ERROR: $PACKAGE_SWIFT was not generated."
-  ls -la "$EPHEMERAL_DIR/Packages" || true
-  exit 1
-fi
+echo "--- Verifying generated files ---"
+for f in "$GENERATED_XCCONFIG" "$PACKAGE_SWIFT"; do
+  if [ ! -f "$f" ]; then
+    echo "ERROR: expected generated file missing: $f"
+    find "$EPHEMERAL_DIR" -maxdepth 3 -print || true
+    exit 1
+  fi
+done
 
-echo "=== Flutter-Generated.xcconfig ==="
+# Xcode's Flutter Assemble phase reads these; empty is valid, missing is fatal.
+for list in FlutterInputs FlutterOutputs; do
+  path="$EPHEMERAL_DIR/$list.xcfilelist"
+  [ -f "$path" ] || : > "$path"
+done
+[ -f "$EPHEMERAL_DIR/tripwire" ] || touch "$EPHEMERAL_DIR/tripwire"
+
+echo "--- Flutter-Generated.xcconfig ---"
 cat "$GENERATED_XCCONFIG"
 
-echo "=== FlutterGeneratedPluginSwiftPackage/Package.swift ==="
+echo "--- FlutterGeneratedPluginSwiftPackage/Package.swift ---"
 cat "$PACKAGE_SWIFT"
 
 if ! grep -q 'window_manager\|macos_ui\|shared_preferences_foundation\|sqflite_darwin' "$PACKAGE_SWIFT"; then
-  echo "ERROR: Package.swift has no plugin dependencies."
+  echo "ERROR: Package.swift lists no plugin dependencies."
+  echo "Xcode will fail with 'Unable to resolve module dependency'."
   exit 1
 fi
 
-echo "=== Ephemeral file lists ==="
-ls -la "$INPUTS_LIST" "$OUTPUTS_LIST"
+echo "--- Built app ---"
+ls -la build/macos/Build/Products/Release/ 2>/dev/null || true
 
-echo "=== DropXide Xcode Cloud: post-clone complete (SPM) ==="
+echo "=============================================="
+echo "post-clone complete: Flutter build succeeded"
+echo "=============================================="
 exit 0
