@@ -33,7 +33,7 @@ Map<String, dynamic> _$BuildHistoryToJson(BuildHistory instance) =>
       'id': instance.id,
       'projectId': instance.projectId,
       'projectName': instance.projectName,
-      'buildConfig': instance.buildConfig,
+      'buildConfig': instance.buildConfig.toJson(),
       'startedAt': instance.startedAt.toIso8601String(),
       'completedAt': instance.completedAt?.toIso8601String(),
       'status': _$BuildStatusEnumMap[instance.status]!,

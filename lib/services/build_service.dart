@@ -48,7 +48,8 @@ class BuildService {
     final sdkOk = await _sdkService.validateFlutterSdk();
     if (!sdkOk || _sdkService.flutterPath == null) {
       throw Exception(
-        'Flutter SDK not found. Install Flutter and ensure it is on your PATH.',
+        'Flutter SDK not found. Set its location in Settings > Flutter SDK, '
+        'or install Flutter (for example: brew install --cask flutter).',
       );
     }
 
@@ -143,7 +144,7 @@ class BuildService {
         _sdkService.flutterPath!,
         command,
         workingDirectory: project.path,
-        environment: Platform.environment,
+        environment: _sdkService.buildEnvironment(),
         runInShell: false,
       );
 

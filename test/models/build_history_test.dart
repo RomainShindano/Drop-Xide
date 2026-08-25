@@ -12,6 +12,7 @@ void main() {
 
       final history = BuildHistory(
         id: '123',
+        buildNumber: 1,
         projectId: 'project-123',
         projectName: 'Test Project',
         buildConfig: buildConfig,
@@ -31,6 +32,7 @@ void main() {
 
       final history = BuildHistory(
         id: '123',
+        buildNumber: 1,
         projectId: 'project-123',
         projectName: 'Test Project',
         buildConfig: BuildConfig(
@@ -50,6 +52,7 @@ void main() {
     test('should check if build is completed', () {
       final successBuild = BuildHistory(
         id: '123',
+        buildNumber: 1,
         projectId: 'project-123',
         projectName: 'Test Project',
         buildConfig: BuildConfig(
@@ -71,6 +74,7 @@ void main() {
     test('should convert to and from JSON', () {
       final history = BuildHistory(
         id: '123',
+        buildNumber: 1,
         projectId: 'project-123',
         projectName: 'Test Project',
         buildConfig: BuildConfig(
