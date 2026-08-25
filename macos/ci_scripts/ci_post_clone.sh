@@ -2,10 +2,14 @@
 #
 # Xcode Cloud post-clone hook for DropXide (macOS / Swift Package Manager).
 #
-# Strategy: run a COMPLETE `flutter build macos` here, before Xcode Cloud runs
-# its own xcodebuild. Flutter prints readable errors; Xcode Cloud only reports
-# "Command exited with non-zero exit-code: 65". If something is wrong, this
-# script fails with the real reason instead of an opaque xcodebuild failure.
+# Generates the Flutter files Xcode needs, then compiles once with code signing
+# disabled to surface real Dart/Swift/plugin errors here — xcodebuild otherwise
+# reports only "exit-code: 65" with no cause.
+#
+# Signing certificates are NOT available to post-clone scripts; Xcode Cloud only
+# provides them to its own build/archive step. Any build run here must therefore
+# pass CODE_SIGNING_ALLOWED=NO, or it fails with:
+#   No signing certificate "Mac Development" found
 #
 # Required environment variable:
 #   FLUTTER_VERSION  e.g. stable or 3.47.1
@@ -23,7 +27,6 @@ FLUTTER_HOME="${FLUTTER_HOME:-$HOME/flutter}"
 echo "--- Environment ---"
 echo "FLUTTER_VERSION=$FLUTTER_VERSION"
 echo "CI_XCODEBUILD_ACTION=${CI_XCODEBUILD_ACTION:-<unset>}"
-echo "CI_XCODE_SCHEME=${CI_XCODE_SCHEME:-<unset>}"
 echo "CI_WORKFLOW=${CI_WORKFLOW:-<unset>}"
 sw_vers || true
 xcodebuild -version || true
@@ -46,25 +49,13 @@ EPHEMERAL_DIR="macos/Flutter/ephemeral"
 GENERATED_XCCONFIG="$EPHEMERAL_DIR/Flutter-Generated.xcconfig"
 PACKAGE_SWIFT="$EPHEMERAL_DIR/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift"
 
-echo "--- flutter doctor ---"
-flutter doctor -v || true
-
 echo "--- flutter pub get ---"
 flutter pub get
 
-# A full build materializes everything Xcode needs (Flutter-Generated.xcconfig,
-# the SPM plugin package, xcfilelists with real contents) and surfaces any
-# Dart/Swift/plugin error with a readable message.
-echo "--- flutter build macos --release (full build to surface real errors) ---"
-if ! flutter build macos --release --verbose; then
-  echo ""
-  echo "=============================================="
-  echo "FLUTTER BUILD FAILED"
-  echo "This is the real cause of the Xcode Cloud"
-  echo "'exit-code: 65' failure. See the Flutter error above."
-  echo "=============================================="
-  exit 1
-fi
+# --config-only generates Flutter-Generated.xcconfig, the SPM plugin package,
+# and the xcfilelists without invoking xcodebuild (so no signing needed).
+echo "--- flutter build macos --config-only ---"
+flutter build macos --config-only
 
 echo "--- Verifying generated files ---"
 for f in "$GENERATED_XCCONFIG" "$PACKAGE_SWIFT"; do
@@ -75,7 +66,6 @@ for f in "$GENERATED_XCCONFIG" "$PACKAGE_SWIFT"; do
   fi
 done
 
-# Xcode's Flutter Assemble phase reads these; empty is valid, missing is fatal.
 for list in FlutterInputs FlutterOutputs; do
   path="$EPHEMERAL_DIR/$list.xcfilelist"
   [ -f "$path" ] || : > "$path"
@@ -90,14 +80,35 @@ cat "$PACKAGE_SWIFT"
 
 if ! grep -q 'window_manager\|macos_ui\|shared_preferences_foundation\|sqflite_darwin' "$PACKAGE_SWIFT"; then
   echo "ERROR: Package.swift lists no plugin dependencies."
-  echo "Xcode will fail with 'Unable to resolve module dependency'."
+  echo "Xcode would fail with 'Unable to resolve module dependency'."
   exit 1
 fi
 
-echo "--- Built app ---"
-ls -la build/macos/Build/Products/Release/ 2>/dev/null || true
+# Compile check without signing. Catches Swift/plugin/module errors while the
+# log is still readable, and cannot fail for certificate reasons.
+echo "--- Compile check (code signing disabled) ---"
+if ! xcodebuild \
+  -project macos/Runner.xcodeproj \
+  -scheme Runner \
+  -configuration Release \
+  -destination 'generic/platform=macOS' \
+  -derivedDataPath build/ci-precheck \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGN_IDENTITY="" \
+  build; then
+  echo ""
+  echo "=============================================="
+  echo "COMPILE CHECK FAILED"
+  echo "The Xcode error above is the real cause of the"
+  echo "Xcode Cloud 'exit-code: 65' failure."
+  echo "(Signing was disabled here, so this is NOT a"
+  echo " certificate/provisioning problem.)"
+  echo "=============================================="
+  exit 1
+fi
 
 echo "=============================================="
-echo "post-clone complete: Flutter build succeeded"
+echo "post-clone complete: compiles cleanly"
 echo "=============================================="
 exit 0
