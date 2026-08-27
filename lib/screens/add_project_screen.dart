@@ -143,6 +143,7 @@ class _AddProjectScreenState extends State<AddProjectScreen> {
   Future<void> _selectDirectory() async {
     try {
       final selectedDirectory = await AppFilePicker.pickDirectory(
+        dialogTitle: 'Choose a Flutter project folder',
         confirmButtonText: 'Select Project',
       );
       if (selectedDirectory != null && mounted) {

@@ -8,6 +8,7 @@ import 'providers/build_provider.dart';
 import 'providers/publish_provider.dart';
 import 'providers/settings_provider.dart';
 import 'constants/app_theme.dart';
+import 'utils/app_file_picker.dart';
 
 Future<void> _configureMacosWindowUtils() async {
   const config = MacosWindowUtilsConfig(
@@ -24,6 +25,10 @@ Future<void> _configureMacosWindowUtils() async {
 
 void main() async {
   await _configureMacosWindowUtils();
+
+  // Must happen before anything reads project or SDK paths: under App Sandbox
+  // those directories are unreachable until their bookmarks are reopened.
+  await AppFilePicker.restoreAccess();
 
   final projectProvider = ProjectProvider()..loadProjects();
   final buildProvider = BuildProvider()..loadBuildHistory();

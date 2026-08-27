@@ -98,22 +98,48 @@ referenced by `LSApplicationCategoryType` in `Runner/Info.plist`. DropXide uses
   and `allow-unsigned-executable-memory` are unnecessary and invite review
   questions. They belong only in `DebugProfile.entitlements`.
 
-## App Sandbox blocks DropXide's core feature
+## App Sandbox and user-selected paths
+
+Anything the user chooses through the open panel (project folders, the Flutter
+SDK, service-account JSON) is reachable under App Sandbox, but **only until the
+app quits** — unless a security-scoped bookmark is stored.
+
+`Runner/MainFlutterWindow.swift` saves a bookmark for every pick and reopens
+them on launch via the `restoreAccess` channel method, which `main()` awaits
+before any provider reads a path. Without that step, saved projects and a
+located SDK become unreadable after a relaunch even though the paths look valid.
+
+Auto-detection still cannot scan system locations such as `/opt/homebrew`;
+sandbox denies those outright. Use **Locate…** in Settings so the SDK arrives
+through the open panel and gets a bookmark.
+
+## App Sandbox limits on running builds
 
 TestFlight and the Mac App Store require **App Sandbox**
 (`com.apple.security.app-sandbox`), enabled in `Runner/Release.entitlements`.
 
-A sandboxed app **cannot execute arbitrary external binaries**, which is exactly
-what DropXide does — it runs `git`, the user's `flutter` SDK, `open`, and
-`osascript` through `Process.run` / `Process.start` in `git_service.dart`,
-`flutter_sdk_service.dart`, `build_service.dart`, `notification_service.dart`,
-and `artifact_storage_service.dart`.
+Sandboxing does **not** stop DropXide from spawning `git`, `flutter`, `open` or
+`osascript`. A sandboxed process may exec other binaries; the child simply
+inherits the same sandbox. So short, contained operations — reading a project,
+listing branches, revealing a file — work once the relevant folder has been
+granted through the open panel.
 
-A sandboxed build will install and launch, but project detection, branch
-listing, and builds will fail at runtime. No entitlement lifts this restriction.
+Full builds are the problem. A Flutter build writes far outside the folders the
+user picked:
 
-To ship DropXide as a working build tool, distribute it **outside** the App
-Store:
+| Toolchain path | Purpose |
+|---|---|
+| `~/.pub-cache` | Dart package cache |
+| `<sdk>/bin/cache` | Flutter's own engine artifacts |
+| `~/.gradle`, `~/.android` | Android builds |
+| `~/Library/Developer/Xcode/DerivedData` | iOS/macOS builds |
+| `$TMPDIR`, `/tmp` | intermediates |
+
+None of those are covered by `files.user-selected`, and no entitlement grants
+them. Expect builds to fail partway even though the app launches and detects
+projects correctly.
+
+To ship DropXide as a full build tool, distribute it **outside** the App Store:
 
 1. Archive with **Developer ID Application** signing
 2. Notarize (`xcrun notarytool submit`), then staple, and ship a `.dmg`/`.zip`
