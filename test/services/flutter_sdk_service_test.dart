@@ -88,6 +88,49 @@ void main() {
     });
   });
 
+  group('unreadable locations', () {
+    // App Sandbox denies access to paths like /opt/homebrew/Caskroom, and
+    // probing them throws PathAccessException rather than returning false.
+    test('setSdkPath reports failure instead of throwing', () async {
+      final locked = Directory.systemTemp.createTempSync('dropxide_locked');
+      Process.runSync('chmod', ['000', locked.path]);
+      addTearDown(() {
+        Process.runSync('chmod', ['755', locked.path]);
+        locked.deleteSync(recursive: true);
+      });
+
+      final service = FlutterSdkService();
+
+      expect(
+        await service.setSdkPath(p.join(locked.path, 'flutter')),
+        isFalse,
+      );
+      expect(service.isFlutterAvailable, isFalse);
+    });
+
+    test('detectFlutterSdk completes rather than propagating an error',
+        () async {
+      final service = FlutterSdkService();
+      await expectLater(service.detectFlutterSdk(), completes);
+    });
+
+    test('a saved path that has become unreadable does not throw', () async {
+      final locked = Directory.systemTemp.createTempSync('dropxide_saved');
+      Process.runSync('chmod', ['000', locked.path]);
+      addTearDown(() {
+        Process.runSync('chmod', ['755', locked.path]);
+        locked.deleteSync(recursive: true);
+      });
+
+      SharedPreferences.setMockInitialValues({
+        'flutter_sdk_path': p.join(locked.path, 'flutter', 'bin', 'flutter'),
+      });
+
+      final service = FlutterSdkService();
+      await expectLater(service.detectFlutterSdk(), completes);
+    });
+  });
+
   group('getFlutterInfo', () {
     test('reports the manual flag once a path is chosen', () async {
       final sdk = _fakeSdk();
