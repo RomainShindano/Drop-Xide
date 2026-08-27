@@ -30,32 +30,37 @@ class FlutterSdkService {
   Future<bool> detectFlutterSdk() async {
     final searched = <String>[];
 
-    final manual = await _savedPath();
-    if (manual != null) {
-      final binary = _resolveBinary(manual);
-      searched.add(manual);
-      if (binary != null && await _adopt(binary, isManual: true)) {
-        _searchedPaths = searched;
-        return true;
+    try {
+      final manual = await _savedPath();
+      if (manual != null) {
+        final binary = _resolveBinary(manual);
+        searched.add(manual);
+        if (binary != null && await _adopt(binary, isManual: true)) {
+          _searchedPaths = searched;
+          return true;
+        }
       }
-    }
 
-    final fromShell = await _resolveViaLoginShell();
-    if (fromShell != null) {
-      searched.add(fromShell);
-      if (await _adopt(fromShell, isManual: false)) {
-        _searchedPaths = searched;
-        return true;
+      final fromShell = await _resolveViaLoginShell();
+      if (fromShell != null) {
+        searched.add(fromShell);
+        if (await _adopt(fromShell, isManual: false)) {
+          _searchedPaths = searched;
+          return true;
+        }
       }
-    }
 
-    for (final candidate in _wellKnownBinaries()) {
-      searched.add(candidate);
-      if (File(candidate).existsSync() &&
-          await _adopt(candidate, isManual: false)) {
-        _searchedPaths = searched;
-        return true;
+      for (final candidate in _wellKnownBinaries()) {
+        searched.add(candidate);
+        if (_isFile(candidate) && await _adopt(candidate, isManual: false)) {
+          _searchedPaths = searched;
+          return true;
+        }
       }
+    } catch (_) {
+      // Detection probes paths the app may not be allowed to read. Treat any
+      // unexpected failure as "not found" rather than letting it surface as a
+      // build error.
     }
 
     _flutterPath = null;
@@ -73,14 +78,22 @@ class FlutterSdkService {
     if (binary == null || !await _adopt(binary, isManual: true)) {
       return false;
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefsKey, binary);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsKey, binary);
+    } catch (_) {
+      // The SDK still works for this session even if the choice can't be saved.
+    }
     return true;
   }
 
   Future<void> clearSdkPath() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_prefsKey);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefsKey);
+    } catch (_) {
+      // Fall through to re-detection regardless.
+    }
     await detectFlutterSdk();
   }
 
@@ -142,13 +155,34 @@ class FlutterSdkService {
     ];
 
     for (final candidate in candidates) {
-      final file = File(candidate);
-      if (file.existsSync() &&
-          FileSystemEntity.typeSync(candidate) != FileSystemEntityType.directory) {
+      if (_isFile(candidate)) {
         return candidate;
       }
     }
     return null;
+  }
+
+  /// Whether [path] is a regular file. App Sandbox denies access to locations
+  /// such as `/opt/homebrew`, and probing those throws rather than returning
+  /// false, so every filesystem check goes through here.
+  bool _isFile(String path) {
+    try {
+      return FileSystemEntity.typeSync(path) == FileSystemEntityType.file;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Immediate subdirectories of [path], or an empty list when the directory is
+  /// missing or unreadable.
+  List<Directory> _subdirectories(String path) {
+    try {
+      final dir = Directory(path);
+      if (!dir.existsSync()) return const [];
+      return dir.listSync(followLinks: false).whereType<Directory>().toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<bool> _adopt(String binary, {required bool isManual}) async {
@@ -201,7 +235,7 @@ class FlutterSdkService {
     if (Platform.isWindows) return null;
 
     final shell = Platform.environment['SHELL'] ?? '/bin/zsh';
-    if (!File(shell).existsSync()) return null;
+    if (!_isFile(shell)) return null;
 
     try {
       final result = await Process.run(
@@ -217,7 +251,7 @@ class FlutterSdkService {
           .toString()
           .split('\n')
           .map((l) => l.trim())
-          .where((l) => l.startsWith('/') && File(l).existsSync());
+          .where((l) => l.startsWith('/') && _isFile(l));
 
       return candidates.isEmpty ? null : candidates.last;
     } catch (_) {
@@ -275,10 +309,8 @@ class FlutterSdkService {
   List<String> _homebrewCaskBinaries() {
     final found = <String>[];
     for (final prefix in ['/opt/homebrew', '/usr/local']) {
-      final caskroom = Directory('$prefix/Caskroom/flutter');
-      if (!caskroom.existsSync()) continue;
-      for (final entry in caskroom.listSync().whereType<Directory>()) {
-        found.add(p.join(entry.path, 'flutter', 'bin', 'flutter'));
+      for (final version in _subdirectories('$prefix/Caskroom/flutter')) {
+        found.add(p.join(version.path, 'flutter', 'bin', 'flutter'));
       }
     }
     return found;
