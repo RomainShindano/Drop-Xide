@@ -46,7 +46,7 @@ class BuildService {
     }
 
     final sdkOk = await _sdkService.validateFlutterSdk();
-    if (!sdkOk || _sdkService.flutterPath == null) {
+    if (!sdkOk || !_sdkService.isFlutterAvailable) {
       throw Exception(
         'Flutter SDK not found. Set its location in Settings > Flutter SDK, '
         'or install Flutter (for example: brew install --cask flutter).',
@@ -140,12 +140,9 @@ class BuildService {
         'Running: flutter ${command.join(' ')}',
       );
 
-      final process = await Process.start(
-        _sdkService.flutterPath!,
+      final process = await _sdkService.startFlutterProcess(
         command,
         workingDirectory: project.path,
-        environment: _sdkService.buildEnvironment(),
-        runInShell: false,
       );
 
       _activeProcess = process;

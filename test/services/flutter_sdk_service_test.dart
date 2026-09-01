@@ -154,6 +154,29 @@ void main() {
       expect(info['isAvailable'], isTrue);
       expect(info['isManual'], isTrue);
       expect(info['sdkRoot'], sdk.path);
+      expect(info['usesShellRunner'], isFalse);
+    });
+
+    test('isFlutterAvailable stays true when only shell runner is active', () {
+      final service = FlutterSdkService();
+      expect(service.isFlutterAvailable, isFalse);
+    });
+  });
+
+  group('startFlutterProcess', () {
+    test('starts the resolved binary directly when available', () async {
+      final sdk = _fakeSdk();
+      addTearDown(() => sdk.parent.deleteSync(recursive: true));
+
+      final service = FlutterSdkService();
+      await service.setSdkPath(sdk.path);
+
+      final process = await service.startFlutterProcess(['--version']);
+      addTearDown(() => process.kill());
+
+      final exitCode = await process.exitCode;
+      expect(exitCode, 0);
+      expect(service.usesShellRunner, isFalse);
     });
   });
 }
