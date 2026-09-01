@@ -113,7 +113,9 @@ class MainFlutterWindow: NSWindow {
     panel.prompt = confirmButtonText ?? "Use SDK"
     panel.message =
       dialogTitle
-      ?? "Choose your Flutter SDK folder (the one containing bin/flutter), or select the flutter executable."
+      ?? "Choose a Flutter version folder (e.g. 3.29.0), the flutter folder "
+      + "inside it, or the flutter executable. Selecting the Caskroom/flutter "
+      + "folder picks the newest version automatically."
     panel.treatsFilePackagesAsDirectories = true
 
     let homebrewCaskroom = "/opt/homebrew/Caskroom/flutter"
@@ -161,7 +163,36 @@ class MainFlutterWindow: NSWindow {
       }
     }
 
-    present(panel, result: result)
+    presentFlutterSdk(panel, result: result)
+  }
+
+  private func presentFlutterSdk(_ panel: NSOpenPanel, result: @escaping FlutterResult) {
+    panel.beginSheetModal(for: self) { [weak self] response in
+      guard response == .OK, let url = panel.url else {
+        result(nil)
+        return
+      }
+
+      // Grant access to the selection first so nested discovery can run.
+      self?.persistAccess(to: url)
+
+      guard let sdkRoot = self?.resolveSdkRoot(from: url) else {
+        result(
+          FlutterError(
+            code: "invalid_sdk",
+            message:
+              "No Flutter SDK found in that selection. Choose a version folder "
+              + "inside Caskroom (e.g. 3.29.0), the flutter folder within it, "
+              + "or the flutter executable in bin/.",
+            details: url.path
+          )
+        )
+        return
+      }
+
+      self?.persistAccess(to: sdkRoot)
+      result(sdkRoot.path)
+    }
   }
 
   private func present(_ panel: NSOpenPanel, result: @escaping FlutterResult) {
@@ -171,7 +202,7 @@ class MainFlutterWindow: NSWindow {
         return
       }
 
-      if let sdkRoot = self?.normalizedSdkRoot(from: url) {
+      if let sdkRoot = self?.resolveSdkRoot(from: url) {
         self?.persistAccess(to: sdkRoot)
         result(sdkRoot.path)
       } else {
@@ -181,33 +212,56 @@ class MainFlutterWindow: NSWindow {
     }
   }
 
-  /// Maps a panel selection to the SDK root and handles Homebrew Caskroom
-  /// layouts where the user picks the version folder instead of `flutter/`.
-  private func normalizedSdkRoot(from url: URL) -> URL? {
+  /// Resolves any common Flutter SDK selection to the SDK root directory.
+  private func resolveSdkRoot(from url: URL) -> URL? {
     if !url.hasDirectoryPath {
-      return sdkRootForFlutterSelection(url)
+      return sdkRootForFlutterExecutable(url)
     }
 
     let binFlutter = url.appendingPathComponent("bin/flutter")
-    if FileManager.default.isExecutableFile(atPath: binFlutter.path) {
+    if FileManager.default.fileExists(atPath: binFlutter.path) {
       return url
     }
 
     let nested = url.appendingPathComponent("flutter")
     let nestedBinFlutter = nested.appendingPathComponent("bin/flutter")
-    if FileManager.default.isExecutableFile(atPath: nestedBinFlutter.path) {
+    if FileManager.default.fileExists(atPath: nestedBinFlutter.path) {
       return nested
     }
 
-    return url
+    if url.lastPathComponent == "flutter" {
+      return newestSdkInCaskroom(url)
+    }
+
+    return nil
+  }
+
+  /// When the user selects `/opt/homebrew/Caskroom/flutter`, pick the newest
+  /// installed version automatically (`…/<version>/flutter`).
+  private func newestSdkInCaskroom(_ caskroom: URL) -> URL? {
+    guard
+      let entries = try? FileManager.default.contentsOfDirectory(
+        at: caskroom,
+        includingPropertiesForKeys: nil,
+        options: [.skipsHiddenFiles]
+      )
+    else {
+      return nil
+    }
+
+    let sorted = entries.sorted { $0.lastPathComponent > $1.lastPathComponent }
+    for versionDir in sorted {
+      let sdk = versionDir.appendingPathComponent("flutter")
+      let binFlutter = sdk.appendingPathComponent("bin/flutter")
+      if FileManager.default.fileExists(atPath: binFlutter.path) {
+        return sdk
+      }
+    }
+    return nil
   }
 
   /// Maps a panel selection to the SDK root directory when possible.
-  private func sdkRootForFlutterSelection(_ url: URL) -> URL? {
-    if url.hasDirectoryPath {
-      return url
-    }
-
+  private func sdkRootForFlutterExecutable(_ url: URL) -> URL? {
     guard url.lastPathComponent == "flutter" else { return nil }
     let binDir = url.deletingLastPathComponent()
     guard binDir.lastPathComponent == "bin" else { return nil }

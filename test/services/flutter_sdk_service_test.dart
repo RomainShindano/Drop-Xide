@@ -70,6 +70,26 @@ void main() {
       expect(service.flutterPath, p.join(sdk.path, 'bin', 'flutter'));
     });
 
+    test('accepts the Homebrew Caskroom parent folder', () async {
+      final root = Directory.systemTemp.createTempSync('dropxide_cask_parent');
+      addTearDown(() => root.deleteSync(recursive: true));
+
+      final caskroom = Directory(p.join(root.path, 'Caskroom', 'flutter'))
+        ..createSync(recursive: true);
+      final version = Directory(p.join(caskroom.path, '3.29.0'))..createSync();
+      final sdk = Directory(p.join(version.path, 'flutter'))..createSync();
+      final bin = Directory(p.join(sdk.path, 'bin'))..createSync();
+      final exe = File(p.join(bin.path, 'flutter'))
+        ..writeAsStringSync(
+          '#!/bin/sh\necho "Flutter 3.99.0 • channel stable • test"\n',
+        );
+      Process.runSync('chmod', ['755', exe.path]);
+
+      final service = FlutterSdkService();
+      expect(await service.setSdkPath(caskroom.path), isTrue);
+      expect(service.sdkRoot, sdk.path);
+    });
+
     test('rejects a directory that holds no SDK', () async {
       final empty = Directory.systemTemp.createTempSync('dropxide_empty');
       addTearDown(() => empty.deleteSync(recursive: true));

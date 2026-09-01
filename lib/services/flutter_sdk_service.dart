@@ -252,7 +252,71 @@ class FlutterSdkService {
     final atNested = p.join(nestedRoot, 'bin', exe);
     if (await _looksLikeSdkRoot(nestedRoot, atNested)) return nestedRoot;
 
+    // Homebrew Caskroom parent: …/Caskroom/flutter (contains version folders).
+    if (_isCaskroomParent(trimmed)) {
+      final discovered = await _discoverCaskroomSdk(trimmed);
+      if (discovered != null) return discovered;
+    }
+
     return null;
+  }
+
+  bool _isCaskroomParent(String path) {
+    return p.basename(path) == 'flutter' &&
+        p.basename(p.dirname(path)) == 'Caskroom';
+  }
+
+  Future<String?> _discoverCaskroomSdk(String caskroom) async {
+    final candidates = <String>[];
+
+    for (final version in _subdirectories(caskroom)) {
+      final sdkRoot = p.join(version.path, 'flutter');
+      final binary = p.join(sdkRoot, 'bin', 'flutter');
+      candidates.add(sdkRoot);
+      if (await _looksLikeSdkRoot(sdkRoot, binary)) return sdkRoot;
+    }
+
+    return _discoverCaskroomViaShell(caskroom, candidates);
+  }
+
+  Future<String?> _discoverCaskroomViaShell(
+    String caskroom,
+    List<String> alreadyTried,
+  ) async {
+    if (Platform.isWindows) return null;
+
+    try {
+      final result = await Process.run(
+        _shellExecutable(),
+        [
+          '-ilc',
+          'for d in "$caskroom"/*/flutter/bin/flutter; do '
+          r'[ -e "$d" ] || continue; '
+          r'"$d" --version 2>/dev/null | head -n 1 && echo "$d" && break; '
+          'done',
+        ],
+        environment: buildEnvironment(),
+        runInShell: false,
+      ).timeout(_lookupTimeout);
+
+      if (result.exitCode != 0) return null;
+
+      final lines = result.stdout
+          .toString()
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+
+      if (lines.length < 2 || !lines.first.startsWith('Flutter ')) {
+        return null;
+      }
+
+      final binary = lines.last;
+      return _sdkRootFor(binary);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<bool> _looksLikeSdkRoot(String sdkRoot, String binary) async {
