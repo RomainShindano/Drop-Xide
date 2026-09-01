@@ -171,13 +171,35 @@ class MainFlutterWindow: NSWindow {
         return
       }
 
-      if let sdkRoot = self?.sdkRootForFlutterSelection(url) {
+      if let sdkRoot = self?.normalizedSdkRoot(from: url) {
         self?.persistAccess(to: sdkRoot)
+        result(sdkRoot.path)
       } else {
         self?.persistAccess(to: url)
+        result(url.path)
       }
-      result(url.path)
     }
+  }
+
+  /// Maps a panel selection to the SDK root and handles Homebrew Caskroom
+  /// layouts where the user picks the version folder instead of `flutter/`.
+  private func normalizedSdkRoot(from url: URL) -> URL? {
+    if !url.hasDirectoryPath {
+      return sdkRootForFlutterSelection(url)
+    }
+
+    let binFlutter = url.appendingPathComponent("bin/flutter")
+    if FileManager.default.isExecutableFile(atPath: binFlutter.path) {
+      return url
+    }
+
+    let nested = url.appendingPathComponent("flutter")
+    let nestedBinFlutter = nested.appendingPathComponent("bin/flutter")
+    if FileManager.default.isExecutableFile(atPath: nestedBinFlutter.path) {
+      return nested
+    }
+
+    return url
   }
 
   /// Maps a panel selection to the SDK root directory when possible.
