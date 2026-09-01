@@ -79,6 +79,41 @@ class FlutterSdkService {
     return false;
   }
 
+  /// Records a validated SDK pick from the native open panel.
+  Future<bool> adoptManualPick({
+    required String sdkRoot,
+    String? version,
+  }) async {
+    final binary = p.join(
+      sdkRoot,
+      'bin',
+      Platform.isWindows ? 'flutter.bat' : 'flutter',
+    );
+
+    _flutterPath = binary;
+    _flutterVersion = version ?? await _readVersionAt(binary, sdkRoot);
+    _flutterVersion ??= _structuralVersion(sdkRoot);
+    if (_flutterVersion == null) return false;
+
+    _sdkRoot = sdkRoot;
+    _isManual = true;
+
+    final directVersion = await _readVersionWithEnv(
+      binary,
+      _envForSdk(sdkRoot, binary),
+    );
+    _usesShellRunner = directVersion == null;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsKey, binary);
+      await prefs.setString('${_prefsKey}_root', sdkRoot);
+    } catch (_) {
+      // The SDK still works for this session even if the choice can't be saved.
+    }
+    return true;
+  }
+
   /// Records [path] as the SDK to use. Accepts the SDK root, a Homebrew version
   /// folder, the bin directory, or the `flutter` executable. Returns false when
   /// the selection cannot be verified.
@@ -92,7 +127,7 @@ class FlutterSdkService {
       Platform.isWindows ? 'flutter.bat' : 'flutter',
     );
 
-    final version = await _readVersionAt(binary, sdkRoot);
+    final version = await _readVersionAt(binary, sdkRoot) ?? _structuralVersion(sdkRoot);
     if (version == null) return false;
 
     final directVersion = await _readVersionWithEnv(
@@ -404,6 +439,19 @@ class FlutterSdkService {
     Map<String, String> environment,
   ) async {
     try {
+      if (!Platform.isWindows) {
+        final viaShell = await Process.run(
+          '/bin/sh',
+          [binary, '--version'],
+          environment: environment,
+          runInShell: false,
+        ).timeout(_lookupTimeout);
+        if (viaShell.exitCode == 0) {
+          final line = _firstNonEmptyLine(viaShell.stdout.toString());
+          if (line != null && line.startsWith('Flutter ')) return line;
+        }
+      }
+
       final result = await Process.run(
         binary,
         ['--version'],
@@ -415,6 +463,29 @@ class FlutterSdkService {
       return _firstNonEmptyLine(result.stdout.toString());
     } catch (_) {
       return null;
+    }
+  }
+
+  String? _structuralVersion(String sdkRoot) {
+    final binary = p.join(sdkRoot, 'bin', 'flutter');
+    final packages = p.join(sdkRoot, 'packages', 'flutter');
+    final versionFile = File(p.join(sdkRoot, 'version'));
+
+    if (!_isFile(binary)) return null;
+    if (!_isDirectory(packages) && !versionFile.existsSync()) return null;
+
+    if (versionFile.existsSync()) {
+      final raw = versionFile.readAsStringSync().trim();
+      if (raw.isNotEmpty) return 'Flutter $raw';
+    }
+    return 'Flutter SDK';
+  }
+
+  bool _isDirectory(String path) {
+    try {
+      return FileSystemEntity.typeSync(path) == FileSystemEntityType.directory;
+    } catch (_) {
+      return false;
     }
   }
 

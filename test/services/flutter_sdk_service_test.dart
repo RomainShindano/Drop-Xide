@@ -180,6 +180,25 @@ void main() {
     });
   });
 
+  group('adoptManualPick', () {
+    test('accepts a native-validated SDK without re-running detection', () async {
+      final sdk = _fakeSdk();
+      addTearDown(() => sdk.parent.deleteSync(recursive: true));
+
+      final service = FlutterSdkService();
+      expect(
+        await service.adoptManualPick(
+          sdkRoot: sdk.path,
+          version: 'Flutter 3.99.0 • channel stable • test',
+        ),
+        isTrue,
+      );
+      expect(service.sdkRoot, sdk.path);
+      expect(service.isFlutterAvailable, isTrue);
+      expect(service.flutterVersion, contains('3.99.0'));
+    });
+  });
+
   group('getFlutterInfo', () {
     test('reports the manual flag once a path is chosen', () async {
       final sdk = _fakeSdk();

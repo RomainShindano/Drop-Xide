@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/google_service_account.dart';
+import '../models/flutter_sdk_pick_result.dart';
 import '../services/flutter_sdk_service.dart';
 import '../services/google_play_service.dart';
 
@@ -53,6 +54,20 @@ class SettingsProvider extends ChangeNotifier {
         ? null
         : 'No Flutter SDK found at $path. Choose the SDK folder itself '
             '(the one containing bin/flutter).';
+    notifyListeners();
+    return ok;
+  }
+
+  Future<bool> adoptFlutterSdkPick(FlutterSdkPickResult pick) async {
+    final ok = await _sdkService.adoptManualPick(
+      sdkRoot: pick.sdkRoot,
+      version: pick.version,
+    );
+    _flutterInfo = await _sdkService.getFlutterInfo();
+    _error = ok
+        ? null
+        : 'No Flutter SDK found at ${pick.sdkRoot}. Choose the folder that '
+            'contains bin/flutter.';
     notifyListeners();
     return ok;
   }
