@@ -84,6 +84,23 @@ class AppFilePicker {
     return path;
   }
 
+  static Future<List<String>> ensureAccess(Iterable<String> paths) async {
+    final normalized = paths.where((p) => p.trim().isNotEmpty).toList();
+    if (normalized.isEmpty) return const [];
+
+    try {
+      final restored = await _channel.invokeListMethod<String>(
+        'ensureAccess',
+        <String, dynamic>{'paths': normalized},
+      );
+      return restored ?? const [];
+    } on MissingPluginException {
+      return const [];
+    } on PlatformException {
+      return const [];
+    }
+  }
+
   /// Re-acquires access to folders and files chosen in earlier sessions.
   ///
   /// App Sandbox grants access to a user-selected path only until the app quits.
