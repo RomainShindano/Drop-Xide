@@ -6,26 +6,30 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Locates the Flutter SDK on the host machine.
 ///
 /// A GUI app launched from Finder or the Dock does not inherit the shell's
-/// `PATH`, so `which flutter` alone fails even when Flutter works in Terminal.
-/// Detection therefore tries, in order:
+/// `PATH`, and App Sandbox blocks direct reads of Homebrew paths such as
+/// `/opt/homebrew/Caskroom`. Detection therefore tries, in order:
 ///
 /// 1. a path the user chose explicitly (persisted),
-/// 2. the user's login shell, which applies their real `PATH`,
-/// 3. well-known install locations (Homebrew, fvm, asdf, mise, puro, manual).
+/// 2. the user's login shell running `flutter --version` (works for Homebrew),
+/// 3. Homebrew shim symlinks via `readlink`,
+/// 4. well-known install locations (fvm, asdf, mise, manual).
 class FlutterSdkService {
   static const _prefsKey = 'flutter_sdk_path';
+  static const _shellPathMarker = '__DROPXIDE_FLUTTER_PATH__';
   static const _lookupTimeout = Duration(seconds: 20);
 
   String? _flutterPath;
   String? _flutterVersion;
   String? _sdkRoot;
   bool _isManual = false;
+  bool _usesShellRunner = false;
   List<String> _searchedPaths = const [];
 
   String? get flutterPath => _flutterPath;
   String? get flutterVersion => _flutterVersion;
   String? get sdkRoot => _sdkRoot;
-  bool get isFlutterAvailable => _flutterPath != null;
+  bool get isFlutterAvailable => _flutterPath != null || _usesShellRunner;
+  bool get usesShellRunner => _usesShellRunner;
 
   Future<bool> detectFlutterSdk() async {
     final searched = <String>[];
@@ -41,10 +45,18 @@ class FlutterSdkService {
         }
       }
 
-      final fromShell = await _resolveViaLoginShell();
+      final fromShell = await _probeViaLoginShell();
       if (fromShell != null) {
-        searched.add(fromShell);
-        if (await _adopt(fromShell, isManual: false)) {
+        searched.add(fromShell.binary);
+        if (await _adoptFromProbe(fromShell, isManual: false)) {
+          _searchedPaths = searched;
+          return true;
+        }
+      }
+
+      for (final candidate in _resolveHomebrewSymlinks()) {
+        searched.add(candidate);
+        if (await _adopt(candidate, isManual: false)) {
           _searchedPaths = searched;
           return true;
         }
@@ -63,10 +75,7 @@ class FlutterSdkService {
       // build error.
     }
 
-    _flutterPath = null;
-    _flutterVersion = null;
-    _sdkRoot = null;
-    _isManual = false;
+    _clearState();
     _searchedPaths = searched;
     return false;
   }
@@ -103,7 +112,7 @@ class FlutterSdkService {
   }
 
   Future<Map<String, dynamic>> getFlutterInfo() async {
-    if (_flutterPath == null) {
+    if (!isFlutterAvailable) {
       await detectFlutterSdk();
     }
 
@@ -111,25 +120,50 @@ class FlutterSdkService {
       'path': _flutterPath,
       'version': _flutterVersion,
       'sdkRoot': _sdkRoot,
-      'isAvailable': _flutterPath != null,
+      'isAvailable': isFlutterAvailable,
       'isManual': _isManual,
+      'usesShellRunner': _usesShellRunner,
       'searchedPaths': _searchedPaths,
     };
   }
 
   Future<bool> validateFlutterSdk() => detectFlutterSdk();
 
+  /// Starts a `flutter` process, using the login shell when App Sandbox blocks
+  /// direct execution of the resolved Homebrew binary.
+  Future<Process> startFlutterProcess(
+    List<String> args, {
+    String? workingDirectory,
+  }) async {
+    final env = buildEnvironment();
+    if (_usesShellRunner || _flutterPath == null) {
+      final shell = _shellExecutable();
+      final command = 'flutter ${_shellJoin(args)}';
+      return Process.start(
+        shell,
+        ['-ilc', command],
+        workingDirectory: workingDirectory,
+        environment: env,
+      );
+    }
+
+    return Process.start(
+      _flutterPath!,
+      args,
+      workingDirectory: workingDirectory,
+      environment: env,
+      runInShell: false,
+    );
+  }
+
   /// Environment for spawning `flutter`, with the SDK's own `bin` directory and
   /// the usual tool locations on `PATH` so nested tools (`dart`, `git`) resolve.
   Map<String, String> buildEnvironment() {
     final env = Map<String, String>.from(Platform.environment);
 
-    final home = env['HOME'];
-    if (home != null && home.contains('/Library/Containers/')) {
-      final match = RegExp(r'^/Users/[^/]+').firstMatch(home);
-      if (match != null) {
-        env['HOME'] = match.group(0)!;
-      }
+    final home = _realHome(env['HOME']);
+    if (home != null) {
+      env['HOME'] = home;
     }
 
     final parts = <String>{
@@ -147,6 +181,32 @@ class FlutterSdkService {
       env['FLUTTER_ROOT'] = _sdkRoot!;
     }
     return env;
+  }
+
+  void _clearState() {
+    _flutterPath = null;
+    _flutterVersion = null;
+    _sdkRoot = null;
+    _isManual = false;
+    _usesShellRunner = false;
+  }
+
+  String _shellExecutable() {
+    if (Platform.isWindows) return 'cmd.exe';
+    final shell = Platform.environment['SHELL'];
+    if (shell != null && shell.isNotEmpty && _isFile(shell)) {
+      return shell;
+    }
+    return '/bin/zsh';
+  }
+
+  String _shellJoin(List<String> args) {
+    return args.map(_shellEscape).join(' ');
+  }
+
+  String _shellEscape(String arg) {
+    if (arg.isEmpty) return "''";
+    return "'${arg.replaceAll("'", r"'\''")}'";
   }
 
   /// Maps a user-supplied path to the `flutter` executable. Accepts the SDK
@@ -177,9 +237,6 @@ class FlutterSdkService {
     return null;
   }
 
-  /// Whether [path] is a regular file. App Sandbox denies access to locations
-  /// such as `/opt/homebrew`, and probing those throws rather than returning
-  /// false, so every filesystem check goes through here.
   bool _isFile(String path) {
     try {
       return FileSystemEntity.typeSync(path) == FileSystemEntityType.file;
@@ -188,8 +245,6 @@ class FlutterSdkService {
     }
   }
 
-  /// Immediate subdirectories of [path], or an empty list when the directory is
-  /// missing or unreadable.
   List<Directory> _subdirectories(String path) {
     try {
       final dir = Directory(path);
@@ -200,14 +255,44 @@ class FlutterSdkService {
     }
   }
 
+  String? _realHome(String? home) {
+    if (home == null || home.isEmpty) return null;
+    if (home.contains('/Library/Containers/')) {
+      final match = RegExp(r'^/Users/[^/]+').firstMatch(home);
+      return match?.group(0) ?? home;
+    }
+    return home;
+  }
+
   Future<bool> _adopt(String binary, {required bool isManual}) async {
     final version = await _readVersion(binary);
-    if (version == null) return false;
+    if (version == null) {
+      final shellVersion = await _readVersionViaShell();
+      if (shellVersion == null) return false;
+      return _adoptFromProbe(
+        _FlutterProbe(binary: binary, version: shellVersion),
+        isManual: isManual,
+      );
+    }
 
     _flutterPath = binary;
     _flutterVersion = version;
     _sdkRoot = _sdkRootFor(binary);
     _isManual = isManual;
+    _usesShellRunner = false;
+    return true;
+  }
+
+  Future<bool> _adoptFromProbe(
+    _FlutterProbe probe, {
+    required bool isManual,
+  }) async {
+    final directVersion = await _readVersion(probe.binary);
+    _flutterPath = probe.binary;
+    _flutterVersion = directVersion ?? probe.version;
+    _sdkRoot = _sdkRootFor(probe.binary);
+    _isManual = isManual;
+    _usesShellRunner = directVersion == null;
     return true;
   }
 
@@ -221,13 +306,27 @@ class FlutterSdkService {
       ).timeout(_lookupTimeout);
 
       if (result.exitCode != 0) return null;
+      return _firstNonEmptyLine(result.stdout.toString());
+    } catch (_) {
+      return null;
+    }
+  }
 
-      final line = result.stdout
-          .toString()
-          .split('\n')
-          .map((l) => l.trim())
-          .firstWhere((l) => l.isNotEmpty, orElse: () => '');
-      return line.isEmpty ? null : line;
+  Future<String?> _readVersionViaShell() async {
+    if (Platform.isWindows) return null;
+
+    try {
+      final result = await Process.run(
+        _shellExecutable(),
+        ['-ilc', 'flutter --version 2>/dev/null | head -n 1'],
+        environment: buildEnvironment(),
+        runInShell: false,
+      ).timeout(_lookupTimeout);
+
+      if (result.exitCode != 0) return null;
+      final line = _firstNonEmptyLine(result.stdout.toString());
+      if (line == null || !line.startsWith('Flutter ')) return null;
+      return line;
     } catch (_) {
       return null;
     }
@@ -243,44 +342,94 @@ class FlutterSdkService {
     }
   }
 
-  /// Asks the user's login shell where `flutter` is. `-i` and `-l` together pick
-  /// up PATH set in either `.zshrc` or `.zprofile`, which is where Homebrew and
-  /// version managers install their shims.
-  Future<String?> _resolveViaLoginShell() async {
+  /// Runs `flutter --version` through the login shell. This is the most reliable
+  /// auto-detect path for Homebrew installs under App Sandbox.
+  Future<_FlutterProbe?> _probeViaLoginShell() async {
     if (Platform.isWindows) return null;
 
-    final shell = Platform.environment['SHELL'] ?? '/bin/zsh';
+    final shell = _shellExecutable();
     if (!_isFile(shell)) return null;
 
     try {
       final result = await Process.run(
         shell,
-        ['-ilc', 'command -v flutter || which flutter'],
+        [
+          '-ilc',
+          'flutter --version 2>/dev/null | head -n 1; '
+          "printf '%s\\n' '$_shellPathMarker'; "
+          'command -v flutter 2>/dev/null || which flutter 2>/dev/null',
+        ],
         environment: buildEnvironment(),
         runInShell: false,
       ).timeout(_lookupTimeout);
 
-      // Interactive shells may print banners, so take the last line that looks
-      // like an absolute path and verify it by running `flutter --version`.
-      final candidates = result.stdout
-          .toString()
-          .split('\n')
-          .map((l) => l.trim())
-          .where((l) => l.startsWith('/'));
+      if (result.exitCode != 0) return null;
 
-      for (final candidate in candidates.toList().reversed) {
-        if (await _readVersion(candidate) != null) {
-          return candidate;
-        }
+      final output = result.stdout.toString();
+      final markerIndex = output.indexOf(_shellPathMarker);
+      if (markerIndex < 0) return null;
+
+      final version = _firstNonEmptyLine(output.substring(0, markerIndex));
+      if (version == null || !version.startsWith('Flutter ')) return null;
+
+      final afterMarker = output.substring(markerIndex + _shellPathMarker.length);
+      final binary = afterMarker
+          .split('\n')
+          .map((line) => line.trim())
+          .lastWhere(
+            (line) => line.startsWith('/'),
+            orElse: () => '',
+          );
+      if (binary.isEmpty) {
+        return _FlutterProbe(binary: 'flutter', version: version);
       }
+
+      return _FlutterProbe(binary: binary, version: version);
+    } catch (_) {
       return null;
+    }
+  }
+
+  List<String> _resolveHomebrewSymlinks() {
+    if (Platform.isWindows) return const [];
+
+    final found = <String>[];
+    for (final shim in ['/opt/homebrew/bin/flutter', '/usr/local/bin/flutter']) {
+      final target = _readSymlinkTarget(shim);
+      if (target == null) continue;
+
+      if (p.basename(target) == 'flutter') {
+        found.add(target);
+        continue;
+      }
+
+      found.add(p.join(target, 'bin', 'flutter'));
+    }
+    return found;
+  }
+
+  String? _readSymlinkTarget(String path) {
+    try {
+      final result = Process.runSync(
+        '/usr/bin/readlink',
+        [path],
+        environment: buildEnvironment(),
+      );
+      if (result.exitCode != 0) return null;
+
+      var target = result.stdout.toString().trim();
+      if (target.isEmpty) return null;
+      if (!target.startsWith('/')) {
+        target = p.normalize(p.join(p.dirname(path), target));
+      }
+      return target;
     } catch (_) {
       return null;
     }
   }
 
   List<String> _wellKnownBinaries() {
-    final home = Platform.environment['HOME'] ??
+    final home = _realHome(Platform.environment['HOME']) ??
         Platform.environment['USERPROFILE'] ??
         '';
 
@@ -296,23 +445,19 @@ class FlutterSdkService {
     }
 
     final roots = <String>[
-      // Homebrew
       '/opt/homebrew/bin/flutter',
       '/usr/local/bin/flutter',
       '/opt/homebrew/share/flutter/bin/flutter',
       '/usr/local/share/flutter/bin/flutter',
-      // Linux package managers
       '/snap/bin/flutter',
       '/opt/flutter/bin/flutter',
       '/usr/local/flutter/bin/flutter',
       if (home.isNotEmpty) ...[
-        // Version managers
         '$home/fvm/default/bin/flutter',
         '$home/.fvm/default/bin/flutter',
         '$home/.asdf/shims/flutter',
         '$home/.local/share/mise/shims/flutter',
         '$home/.puro/envs/default/flutter/bin/flutter',
-        // Common manual installs
         '$home/flutter/bin/flutter',
         '$home/development/flutter/bin/flutter',
         '$home/Developer/flutter/bin/flutter',
@@ -321,12 +466,10 @@ class FlutterSdkService {
       ],
     ];
 
-    return [...roots, ..._homebrewCaskBinaries()];
+    return [...roots, ..._homebrewCaskBinaries(home)];
   }
 
-  /// `brew install --cask flutter` keeps the SDK under `Caskroom/flutter/<version>`,
-  /// which is version-specific and so cannot be hardcoded.
-  List<String> _homebrewCaskBinaries() {
+  List<String> _homebrewCaskBinaries(String home) {
     final found = <String>[];
     for (final prefix in ['/opt/homebrew', '/usr/local']) {
       for (final version in _subdirectories('$prefix/Caskroom/flutter')) {
@@ -336,9 +479,17 @@ class FlutterSdkService {
     return found;
   }
 
-  /// The SDK root, following symlinks so Homebrew's `bin/flutter` shim maps back
-  /// to the real Caskroom directory.
+  String? _firstNonEmptyLine(String text) {
+    for (final line in text.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return null;
+  }
+
   String? _sdkRootFor(String binary) {
+    if (binary == 'flutter') return null;
+
     try {
       final resolved = File(binary).resolveSymbolicLinksSync();
       final binDir = p.dirname(resolved);
@@ -354,4 +505,11 @@ class FlutterSdkService {
       return null;
     }
   }
+}
+
+class _FlutterProbe {
+  const _FlutterProbe({required this.binary, required this.version});
+
+  final String binary;
+  final String version;
 }

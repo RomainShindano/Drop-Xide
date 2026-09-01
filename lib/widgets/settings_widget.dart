@@ -78,7 +78,7 @@ class SettingsWidget extends StatelessWidget {
                                     const SizedBox(height: 4),
                                     Text(
                                       flutterOk
-                                          ? '${settings.flutterInfo['version']}\n${settings.flutterInfo['path']}'
+                                          ? _flutterStatusText(settings.flutterInfo)
                                           : 'Choose your Flutter SDK folder, or install Flutter below.',
                                       style: typography.caption1.copyWith(
                                         color: secondary,
@@ -105,6 +105,18 @@ class SettingsWidget extends StatelessWidget {
                               ),
                             ],
                           ),
+                          if (settings.flutterInfo['usesShellRunner'] == true) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              'Detected automatically via your shell PATH (for example Homebrew). '
+                              'Builds run through your login shell. Press Locate… once if you want '
+                              'Drop-Xide to remember the SDK folder across restarts.',
+                              style: typography.caption1.copyWith(
+                                color: secondary,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
                           if (settings.flutterInfo['isManual'] == true) ...[
                             const SizedBox(height: 12),
                             Row(
@@ -138,13 +150,11 @@ class SettingsWidget extends StatelessWidget {
                             Text(
                               'Homebrew:\n'
                               '    brew install --cask flutter\n'
-                              '    Then press Locate… and choose the version folder inside\n'
-                              '    /opt/homebrew/Caskroom/flutter (the panel opens there automatically).\n\n'
+                              '    Then press Refresh — Drop-Xide asks your login shell where Flutter is.\n\n'
+                              'If auto-detect still fails, press Locate… and choose the version folder inside\n'
+                              '    /opt/homebrew/Caskroom/flutter.\n\n'
                               'Or download the SDK from docs.flutter.dev/get-started/install/macos '
-                              'and unzip it, then press Locate… and choose the "flutter" folder.\n\n'
-                              'Already installed? Drop-Xide runs inside App Sandbox, so it cannot '
-                              'read Homebrew paths until you grant access once with Locate…. '
-                              'After that, your choice is remembered across restarts.',
+                              'and unzip it, then press Locate… and choose the "flutter" folder.',
                               style: typography.caption1.copyWith(
                                 color: secondary,
                                 height: 1.45,
@@ -300,6 +310,15 @@ class SettingsWidget extends StatelessWidget {
         );
       },
     );
+  }
+
+  String _flutterStatusText(Map<String, dynamic> info) {
+    final version = info['version'] ?? 'Flutter';
+    final path = info['path'];
+    if (path == null || (path is String && path.isEmpty)) {
+      return '$version\nFound via your shell PATH';
+    }
+    return '$version\n$path';
   }
 
   Future<void> _locateSdk(BuildContext context) async {
