@@ -33,7 +33,7 @@ class FlutterSdkService {
     try {
       final manual = await _savedPath();
       if (manual != null) {
-        final binary = _resolveBinary(manual);
+        final binary = await _resolveBinary(manual);
         searched.add(manual);
         if (binary != null && await _adopt(binary, isManual: true)) {
           _searchedPaths = searched;
@@ -52,7 +52,7 @@ class FlutterSdkService {
 
       for (final candidate in _wellKnownBinaries()) {
         searched.add(candidate);
-        if (_isFile(candidate) && await _adopt(candidate, isManual: false)) {
+        if (await _adopt(candidate, isManual: false)) {
           _searchedPaths = searched;
           return true;
         }
@@ -74,13 +74,17 @@ class FlutterSdkService {
   /// Records [path] as the SDK to use. Accepts either the SDK root directory or
   /// the `flutter` executable itself. Returns false if it isn't a usable SDK.
   Future<bool> setSdkPath(String path) async {
-    final binary = _resolveBinary(path);
+    final binary = await _resolveBinary(path);
     if (binary == null || !await _adopt(binary, isManual: true)) {
       return false;
     }
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsKey, binary);
+      final root = _sdkRoot;
+      if (root != null) {
+        await prefs.setString('${_prefsKey}_root', root);
+      }
     } catch (_) {
       // The SDK still works for this session even if the choice can't be saved.
     }
@@ -91,6 +95,7 @@ class FlutterSdkService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_prefsKey);
+      await prefs.remove('${_prefsKey}_root');
     } catch (_) {
       // Fall through to re-detection regardless.
     }
@@ -138,12 +143,19 @@ class FlutterSdkService {
       ...(env['PATH'] ?? '').split(':').where((e) => e.isNotEmpty),
     };
     env['PATH'] = parts.join(':');
+    if (_sdkRoot != null) {
+      env['FLUTTER_ROOT'] = _sdkRoot!;
+    }
     return env;
   }
 
   /// Maps a user-supplied path to the `flutter` executable. Accepts the SDK
   /// root, its `bin` directory, or the executable itself.
-  String? _resolveBinary(String path) {
+  ///
+  /// Under App Sandbox, [FileSystemEntity.typeSync] often returns "not a file"
+  /// for paths the user just granted via the open panel, so candidates are also
+  /// verified by running `flutter --version`.
+  Future<String?> _resolveBinary(String path) async {
     final trimmed = path.trim();
     if (trimmed.isEmpty) return null;
 
@@ -156,6 +168,9 @@ class FlutterSdkService {
 
     for (final candidate in candidates) {
       if (_isFile(candidate)) {
+        return candidate;
+      }
+      if (await _readVersion(candidate) != null) {
         return candidate;
       }
     }
@@ -246,14 +261,19 @@ class FlutterSdkService {
       ).timeout(_lookupTimeout);
 
       // Interactive shells may print banners, so take the last line that looks
-      // like an existing executable path.
+      // like an absolute path and verify it by running `flutter --version`.
       final candidates = result.stdout
           .toString()
           .split('\n')
           .map((l) => l.trim())
-          .where((l) => l.startsWith('/') && _isFile(l));
+          .where((l) => l.startsWith('/'));
 
-      return candidates.isEmpty ? null : candidates.last;
+      for (final candidate in candidates.toList().reversed) {
+        if (await _readVersion(candidate) != null) {
+          return candidate;
+        }
+      }
+      return null;
     } catch (_) {
       return null;
     }
@@ -327,6 +347,10 @@ class FlutterSdkService {
       }
       return binDir;
     } catch (_) {
+      final binDir = p.dirname(binary);
+      if (p.basename(binDir) == 'bin') {
+        return p.dirname(binDir);
+      }
       return null;
     }
   }

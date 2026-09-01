@@ -86,6 +86,16 @@ void main() {
       final env = FlutterSdkService().buildEnvironment();
       expect(env['HOME'], isNot(contains('/Library/Containers/')));
     });
+
+    test('sets FLUTTER_ROOT after the SDK is chosen', () async {
+      final sdk = _fakeSdk();
+      addTearDown(() => sdk.parent.deleteSync(recursive: true));
+
+      final service = FlutterSdkService();
+      await service.setSdkPath(sdk.path);
+
+      expect(service.buildEnvironment()['FLUTTER_ROOT'], sdk.path);
+    });
   });
 
   group('unreadable locations', () {

@@ -137,12 +137,14 @@ class SettingsWidget extends StatelessWidget {
                             const SizedBox(height: 6),
                             Text(
                               'Homebrew:\n'
-                              '    brew install --cask flutter\n\n'
+                              '    brew install --cask flutter\n'
+                              '    Then press Locate… and choose the version folder inside\n'
+                              '    /opt/homebrew/Caskroom/flutter (the panel opens there automatically).\n\n'
                               'Or download the SDK from docs.flutter.dev/get-started/install/macos '
                               'and unzip it, then press Locate… and choose the "flutter" folder.\n\n'
-                              'Already installed? Drop-Xide is launched from Finder, which does not '
-                              'read your shell PATH, so use Locate… to point at the SDK folder '
-                              '(the one containing bin/flutter).',
+                              'Already installed? Drop-Xide runs inside App Sandbox, so it cannot '
+                              'read Homebrew paths until you grant access once with Locate…. '
+                              'After that, your choice is remembered across restarts.',
                               style: typography.caption1.copyWith(
                                 color: secondary,
                                 height: 1.45,
@@ -301,8 +303,9 @@ class SettingsWidget extends StatelessWidget {
   }
 
   Future<void> _locateSdk(BuildContext context) async {
-    final path = await AppFilePicker.pickDirectory(
-      dialogTitle: 'Choose your Flutter SDK folder (the one containing bin/flutter)',
+    final path = await AppFilePicker.pickFlutterSdk(
+      dialogTitle:
+          'Choose your Flutter SDK folder (the one containing bin/flutter)',
       confirmButtonText: 'Use SDK',
     );
     if (path == null || !context.mounted) return;
