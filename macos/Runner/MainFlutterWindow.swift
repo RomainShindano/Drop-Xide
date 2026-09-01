@@ -126,7 +126,7 @@ class MainFlutterWindow: NSWindow {
       applyInitialDirectory(legacyCaskroom, to: panel)
     }
 
-    present(panel, result: result)
+    presentFlutterSdk(panel, result: result)
   }
 
   private func applyInitialDirectory(_ path: String?, to panel: NSOpenPanel) {
@@ -163,7 +163,7 @@ class MainFlutterWindow: NSWindow {
       }
     }
 
-    presentFlutterSdk(panel, result: result)
+    present(panel, result: result)
   }
 
   private func presentFlutterSdk(_ panel: NSOpenPanel, result: @escaping FlutterResult) {
@@ -191,7 +191,25 @@ class MainFlutterWindow: NSWindow {
       }
 
       self?.persistAccess(to: sdkRoot)
-      result(sdkRoot.path)
+
+      if let version = self?.readFlutterVersion(at: sdkRoot) {
+        result([
+          "sdkRoot": sdkRoot.path,
+          "version": version,
+        ])
+        return
+      }
+
+      result(
+        FlutterError(
+          code: "invalid_sdk",
+          message:
+            "No Flutter SDK found in that selection. Choose a version folder "
+            + "inside Caskroom (e.g. 3.29.0), the flutter folder within it, "
+            + "or the flutter executable in bin/.",
+          details: url.path
+        )
+      )
     }
   }
 
@@ -258,6 +276,82 @@ class MainFlutterWindow: NSWindow {
       }
     }
     return nil
+  }
+
+  /// Runs `bin/flutter --version` while security-scoped access is active.
+  private func readFlutterVersion(at sdkRoot: URL) -> String? {
+    let binary = sdkRoot.appendingPathComponent("bin/flutter")
+    guard FileManager.default.fileExists(atPath: binary.path) else {
+      return structuralVersion(at: sdkRoot)
+    }
+
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    process.arguments = [binary.path, "--version"]
+
+    var env = ProcessInfo.processInfo.environment
+    env["FLUTTER_ROOT"] = sdkRoot.path
+    let binPath = sdkRoot.appendingPathComponent("bin").path
+    env["PATH"] = "\(binPath):" + (env["PATH"] ?? "")
+    process.environment = env
+
+    let output = Pipe()
+    process.standardOutput = output
+    process.standardError = Pipe()
+
+    do {
+      try process.run()
+      process.waitUntilExit()
+      if process.terminationStatus == 0 {
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        let text = String(data: data, encoding: .utf8) ?? ""
+        let line = text
+          .split(separator: "\n", omittingEmptySubsequences: true)
+          .first
+          .map(String.init)?
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let line = line, line.hasPrefix("Flutter ") {
+          return line
+        }
+      }
+    } catch {
+      // Fall through to structural validation.
+    }
+
+    return structuralVersion(at: sdkRoot)
+  }
+
+  /// Accepts an SDK when `bin/flutter` and core package files exist, even if
+  /// sandbox policy blocks executing the flutter script during validation.
+  private func structuralVersion(at sdkRoot: URL) -> String? {
+    let binFlutter = sdkRoot.appendingPathComponent("bin/flutter")
+    let packagesFlutter = sdkRoot.appendingPathComponent("packages/flutter")
+    let versionFile = sdkRoot.appendingPathComponent("version")
+
+    guard FileManager.default.fileExists(atPath: binFlutter.path) else {
+      return nil
+    }
+
+    guard
+      FileManager.default.fileExists(atPath: packagesFlutter.path)
+        || FileManager.default.fileExists(atPath: versionFile.path)
+    else {
+      return nil
+    }
+
+    if
+      let raw = try? String(
+        contentsOf: versionFile,
+        encoding: .utf8
+      )
+    {
+      let version = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !version.isEmpty {
+        return "Flutter \(version)"
+      }
+    }
+
+    return "Flutter SDK"
   }
 
   /// Maps a panel selection to the SDK root directory when possible.

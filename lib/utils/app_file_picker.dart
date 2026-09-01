@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import '../models/flutter_sdk_pick_result.dart';
+
 /// Native macOS file/folder pickers hosted in Runner (works with macos_ui).
 class AppFilePicker {
   static const _channel = MethodChannel('drop_xide/file_picker');
@@ -18,24 +20,39 @@ class AppFilePicker {
     return path;
   }
 
-  static Future<String?> pickFlutterSdk({
+  /// Opens the Flutter SDK picker. Validation runs natively while security-
+  /// scoped access from the open panel is still active.
+  static Future<FlutterSdkPickResult?> pickFlutterSdk({
     String? dialogTitle,
     String? confirmButtonText,
   }) async {
     try {
-      final path = await _channel.invokeMethod<String>(
+      final result = await _channel.invokeMethod<Object>(
         'pickFlutterSdk',
         <String, dynamic>{
           'dialogTitle': ?dialogTitle,
           'confirmButtonText': ?confirmButtonText,
         },
       );
-      return path;
+
+      if (result is Map) {
+        final sdkRoot = result['sdkRoot'];
+        if (sdkRoot is String && sdkRoot.isNotEmpty) {
+          return FlutterSdkPickResult(
+            sdkRoot: sdkRoot,
+            version: result['version'] as String?,
+          );
+        }
+      }
+
+      return null;
     } on MissingPluginException {
-      return pickDirectory(
+      final path = await pickDirectory(
         dialogTitle: dialogTitle,
         confirmButtonText: confirmButtonText,
       );
+      if (path == null) return null;
+      return FlutterSdkPickResult(sdkRoot: path);
     } on PlatformException catch (e) {
       if (e.code == 'invalid_sdk') return null;
       rethrow;

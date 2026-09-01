@@ -322,15 +322,15 @@ class SettingsWidget extends StatelessWidget {
   }
 
   Future<void> _locateSdk(BuildContext context) async {
-    final path = await AppFilePicker.pickFlutterSdk(
+    final pick = await AppFilePicker.pickFlutterSdk(
       dialogTitle:
           'Choose a Flutter version folder (e.g. 3.29.0), the flutter folder inside it, '
           'or the Caskroom/flutter folder to use the newest version',
       confirmButtonText: 'Use SDK',
     );
-    if (path == null || !context.mounted) return;
+    if (pick == null || !context.mounted) return;
 
-    final ok = await context.read<SettingsProvider>().setFlutterSdkPath(path);
+    final ok = await context.read<SettingsProvider>().adoptFlutterSdkPick(pick);
     if (ok || !context.mounted) return;
 
     await showMacosAlertDialog(
@@ -346,7 +346,7 @@ class SettingsWidget extends StatelessWidget {
           style: MacosTheme.of(context).typography.headline,
         ),
         message: Text(
-          'No Flutter SDK was found at:\n$path\n\n'
+          'No Flutter SDK was found at:\n${pick.sdkRoot}\n\n'
           'For Homebrew, open /opt/homebrew/Caskroom/flutter and choose either:\n'
           '  • the version folder (e.g. 3.29.0), or\n'
           '  • the "flutter" folder inside it (contains bin/flutter).\n\n'
