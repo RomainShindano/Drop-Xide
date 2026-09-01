@@ -39,6 +39,7 @@ class AppFilePicker {
     }
   }
 
+  static Future<String?> pickJsonFile({String? confirmButtonText}) async {
     return pickFile(fileExtension: 'json', confirmButtonText: confirmButtonText);
   }
 
