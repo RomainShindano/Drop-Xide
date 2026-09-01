@@ -102,7 +102,7 @@ class FlutterSdkService {
       binary,
       _envForSdk(sdkRoot, binary),
     );
-    _usesShellRunner = directVersion == null;
+    _usesShellRunner = directVersion == null || !Platform.isWindows;
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -139,7 +139,7 @@ class FlutterSdkService {
     _flutterVersion = version;
     _sdkRoot = sdkRoot;
     _isManual = true;
-    _usesShellRunner = directVersion == null;
+    _usesShellRunner = directVersion == null || !Platform.isWindows;
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -180,32 +180,48 @@ class FlutterSdkService {
 
   Future<bool> validateFlutterSdk() => detectFlutterSdk();
 
-  /// Starts a `flutter` process, using the login shell when App Sandbox blocks
-  /// direct execution of the resolved Homebrew binary.
+  /// Starts a `flutter` process. On macOS, Homebrew's `bin/flutter` is a shell
+  /// script that App Sandbox blocks executing directly — even through
+  /// `zsh -ilc '/path/flutter …'`. The script is invoked via `/bin/sh` instead.
   Future<Process> startFlutterProcess(
     List<String> args, {
     String? workingDirectory,
   }) async {
     final env = buildEnvironment();
-    if (_usesShellRunner || _flutterPath == null) {
-      final shell = _shellExecutable();
-      final flutterCmd =
-          _flutterPath != null ? _shellEscape(_flutterPath!) : 'flutter';
-      final command = '$flutterCmd ${_shellJoin(args)}';
+
+    if (Platform.isWindows) {
+      if (_flutterPath != null) {
+        return Process.start(
+          _flutterPath!,
+          args,
+          workingDirectory: workingDirectory,
+          environment: env,
+          runInShell: false,
+        );
+      }
       return Process.start(
-        shell,
-        ['-ilc', command],
+        'cmd.exe',
+        ['/c', 'flutter ${_shellJoin(args)}'],
         workingDirectory: workingDirectory,
         environment: env,
       );
     }
 
+    if (_flutterPath != null) {
+      return Process.start(
+        '/bin/sh',
+        [_flutterPath!, ...args],
+        workingDirectory: workingDirectory,
+        environment: env,
+      );
+    }
+
+    final shell = _shellExecutable();
     return Process.start(
-      _flutterPath!,
-      args,
+      shell,
+      ['-ilc', 'flutter ${_shellJoin(args)}'],
       workingDirectory: workingDirectory,
       environment: env,
-      runInShell: false,
     );
   }
 
@@ -402,7 +418,7 @@ class FlutterSdkService {
     _flutterVersion = version;
     _sdkRoot = sdkRoot;
     _isManual = isManual;
-    _usesShellRunner = directVersion == null;
+    _usesShellRunner = directVersion == null || !Platform.isWindows;
     return true;
   }
 
@@ -415,7 +431,7 @@ class FlutterSdkService {
     _flutterVersion = directVersion ?? probe.version;
     _sdkRoot = _sdkRootFor(probe.binary);
     _isManual = isManual;
-    _usesShellRunner = directVersion == null;
+    _usesShellRunner = directVersion == null || !Platform.isWindows;
     return true;
   }
 
@@ -502,11 +518,8 @@ class FlutterSdkService {
 
     try {
       final result = await Process.run(
-        _shellExecutable(),
-        [
-          '-ilc',
-          '${_shellEscape(binary)} --version 2>/dev/null | head -n 1',
-        ],
+        '/bin/sh',
+        [binary, '--version'],
         environment: _envForSdk(sdkRoot, binary),
         runInShell: false,
       ).timeout(_lookupTimeout);

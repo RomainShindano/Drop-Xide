@@ -212,7 +212,7 @@ void main() {
       expect(info['isAvailable'], isTrue);
       expect(info['isManual'], isTrue);
       expect(info['sdkRoot'], sdk.path);
-      expect(info['usesShellRunner'], isFalse);
+      expect(info['usesShellRunner'], Platform.isWindows ? isFalse : isTrue);
     });
 
     test('isFlutterAvailable stays true when only shell runner is active', () {
@@ -234,7 +234,11 @@ void main() {
 
       final exitCode = await process.exitCode;
       expect(exitCode, 0);
-      expect(service.usesShellRunner, isFalse);
+      if (Platform.isWindows) {
+        expect(service.usesShellRunner, isFalse);
+      } else {
+        expect(service.usesShellRunner, isTrue);
+      }
     });
   });
 }

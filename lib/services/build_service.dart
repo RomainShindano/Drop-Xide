@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/build_history.dart';
 import '../models/flutter_project.dart';
+import '../utils/app_file_picker.dart';
 import 'artifact_storage_service.dart';
 import 'database_service.dart';
 import 'flutter_sdk_service.dart';
@@ -139,6 +140,9 @@ class BuildService {
         current.id,
         'Running: flutter ${command.join(' ')}',
       );
+
+      // Re-open security-scoped bookmarks for the SDK and project paths.
+      await AppFilePicker.restoreAccess();
 
       final process = await _sdkService.startFlutterProcess(
         command,
