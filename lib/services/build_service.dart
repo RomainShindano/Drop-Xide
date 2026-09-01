@@ -107,6 +107,11 @@ class BuildService {
     final config = buildHistory.buildConfig;
 
     try {
+      await AppFilePicker.ensureAccess([
+        project.path,
+        if (_sdkService.sdkRoot != null) _sdkService.sdkRoot!,
+      ]);
+
       // Checkout branch if specified
       if (config.branch != null && config.branch!.isNotEmpty) {
         await _appendLog(current.id, 'Checking out branch: ${config.branch}...');
@@ -142,7 +147,24 @@ class BuildService {
       );
 
       // Re-open security-scoped bookmarks for the SDK and project paths.
-      await AppFilePicker.restoreAccess();
+      final activated = await AppFilePicker.ensureAccess([
+        project.path,
+        if (_sdkService.sdkRoot != null) _sdkService.sdkRoot!,
+      ]);
+      final projectAccessible = activated.any(
+        (p) =>
+            project.path.startsWith(p) ||
+            p.startsWith(project.path) ||
+            project.path == p,
+      );
+      if (!projectAccessible) {
+        await _appendLog(
+          current.id,
+          'Warning: Drop-Xide cannot access the project folder under App '
+          'Sandbox. Remove the project and add it again with Add Project so '
+          'macOS grants folder access.',
+        );
+      }
 
       final process = await _sdkService.startFlutterProcess(
         command,

@@ -73,6 +73,9 @@ class MainFlutterWindow: NSWindow {
           )
         case "restoreAccess":
           result(self.restoreAccess())
+        case "ensureAccess":
+          let paths = args?["paths"] as? [String] ?? []
+          result(self.ensureAccess(for: paths))
         default:
           result(FlutterMethodNotImplemented)
         }
@@ -225,7 +228,7 @@ class MainFlutterWindow: NSWindow {
         result(sdkRoot.path)
       } else {
         self?.persistAccess(to: url)
-        result(url.path)
+        result(url.resolvingSymlinksInPath().path)
       }
     }
   }
@@ -362,20 +365,70 @@ class MainFlutterWindow: NSWindow {
     return binDir.deletingLastPathComponent()
   }
 
+  /// Activates security-scoped bookmarks needed for [paths], such as a Flutter
+  /// project directory and the SDK root, before spawning build subprocesses.
+  private func ensureAccess(for paths: [String]) -> [String] {
+    _ = restoreAccess()
+
+    var activated: [String] = []
+    for path in paths where !path.isEmpty {
+      if activateBookmark(matching: path) {
+        activated.append((path as NSString).standardizingPath)
+      }
+    }
+    return activated
+  }
+
+  private func activateBookmark(matching path: String) -> Bool {
+    let normalized = (path as NSString).standardizingPath
+
+    if activeScopedURLs.contains(where: { $0.path == normalized }) {
+      return true
+    }
+
+    let stored = storedBookmarks()
+    for (_, data) in stored {
+      var isStale = false
+      guard
+        let url = try? URL(
+          resolvingBookmarkData: data,
+          options: .withSecurityScope,
+          relativeTo: nil,
+          bookmarkDataIsStale: &isStale
+        )
+      else {
+        continue
+      }
+
+      let resolved = url.standardizedFileURL.path
+      let matches =
+        normalized == resolved
+        || normalized.hasPrefix(resolved + "/")
+        || resolved.hasPrefix(normalized + "/")
+
+      if matches, activateAccess(to: url) {
+        return true
+      }
+    }
+
+    return false
+  }
+
   /// Records a security-scoped bookmark so the folder stays reachable after the
   /// app is relaunched. Also starts access for the current process so Dart can
   /// read the path immediately after the user confirms the panel.
   private func persistAccess(to url: URL) {
-    activateAccess(to: url)
+    let resolved = url.standardizedFileURL
+    activateAccess(to: resolved)
 
     do {
-      let data = try url.bookmarkData(
+      let data = try resolved.bookmarkData(
         options: .withSecurityScope,
         includingResourceValuesForKeys: nil,
         relativeTo: nil
       )
       var stored = storedBookmarks()
-      stored[url.path] = data
+      stored[resolved.path] = data
       UserDefaults.standard.set(stored, forKey: MainFlutterWindow.bookmarksKey)
     } catch {
       // Bookmarking with security scope is only meaningful for a sandboxed app.

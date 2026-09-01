@@ -208,10 +208,36 @@ class FlutterSdkService {
     }
 
     if (_flutterPath != null) {
+      if (workingDirectory != null && workingDirectory.isNotEmpty) {
+        // Do not pass workingDirectory directly: if the project folder is
+        // outside the sandbox container, /bin/sh fails getcwd with
+        // "Operation not permitted". cd inside the script once bookmarks are
+        // active instead.
+        final script =
+            'cd ${_shellEscape(workingDirectory)} && '
+            'exec ${_shellEscape(_flutterPath!)} ${_shellJoin(args)}';
+        return Process.start(
+          '/bin/sh',
+          ['-c', script],
+          environment: env,
+        );
+      }
+
       return Process.start(
         '/bin/sh',
         [_flutterPath!, ...args],
-        workingDirectory: workingDirectory,
+        environment: env,
+      );
+    }
+
+    if (workingDirectory != null && workingDirectory.isNotEmpty) {
+      final shell = _shellExecutable();
+      final script =
+          'cd ${_shellEscape(workingDirectory)} && '
+          'exec flutter ${_shellJoin(args)}';
+      return Process.start(
+        shell,
+        ['-c', script],
         environment: env,
       );
     }
@@ -220,7 +246,6 @@ class FlutterSdkService {
     return Process.start(
       shell,
       ['-ilc', 'flutter ${_shellJoin(args)}'],
-      workingDirectory: workingDirectory,
       environment: env,
     );
   }
