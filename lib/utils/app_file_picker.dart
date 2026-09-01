@@ -36,6 +36,9 @@ class AppFilePicker {
         dialogTitle: dialogTitle,
         confirmButtonText: confirmButtonText,
       );
+    } on PlatformException catch (e) {
+      if (e.code == 'invalid_sdk') return null;
+      rethrow;
     }
   }
 

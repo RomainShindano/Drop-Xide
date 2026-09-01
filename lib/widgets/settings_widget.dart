@@ -324,7 +324,8 @@ class SettingsWidget extends StatelessWidget {
   Future<void> _locateSdk(BuildContext context) async {
     final path = await AppFilePicker.pickFlutterSdk(
       dialogTitle:
-          'Choose your Flutter SDK folder (the one containing bin/flutter)',
+          'Choose a Flutter version folder (e.g. 3.29.0), the flutter folder inside it, '
+          'or the Caskroom/flutter folder to use the newest version',
       confirmButtonText: 'Use SDK',
     );
     if (path == null || !context.mounted) return;
