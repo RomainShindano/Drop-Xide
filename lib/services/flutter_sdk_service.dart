@@ -37,9 +37,8 @@ class FlutterSdkService {
     try {
       final manual = await _savedPath();
       if (manual != null) {
-        final binary = await _resolveBinary(manual);
         searched.add(manual);
-        if (binary != null && await _adopt(binary, isManual: true)) {
+        if (await setSdkPath(manual)) {
           _searchedPaths = searched;
           return true;
         }
@@ -80,20 +79,37 @@ class FlutterSdkService {
     return false;
   }
 
-  /// Records [path] as the SDK to use. Accepts either the SDK root directory or
-  /// the `flutter` executable itself. Returns false if it isn't a usable SDK.
+  /// Records [path] as the SDK to use. Accepts the SDK root, a Homebrew version
+  /// folder, the bin directory, or the `flutter` executable. Returns false when
+  /// the selection cannot be verified.
   Future<bool> setSdkPath(String path) async {
-    final binary = await _resolveBinary(path);
-    if (binary == null || !await _adopt(binary, isManual: true)) {
-      return false;
-    }
+    final sdkRoot = await _normalizeSelection(path);
+    if (sdkRoot == null) return false;
+
+    final binary = p.join(
+      sdkRoot,
+      'bin',
+      Platform.isWindows ? 'flutter.bat' : 'flutter',
+    );
+
+    final version = await _readVersionAt(binary, sdkRoot);
+    if (version == null) return false;
+
+    final directVersion = await _readVersionWithEnv(
+      binary,
+      _envForSdk(sdkRoot, binary),
+    );
+
+    _flutterPath = binary;
+    _flutterVersion = version;
+    _sdkRoot = sdkRoot;
+    _isManual = true;
+    _usesShellRunner = directVersion == null;
+
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsKey, binary);
-      final root = _sdkRoot;
-      if (root != null) {
-        await prefs.setString('${_prefsKey}_root', root);
-      }
+      await prefs.setString('${_prefsKey}_root', sdkRoot);
     } catch (_) {
       // The SDK still works for this session even if the choice can't be saved.
     }
@@ -138,7 +154,9 @@ class FlutterSdkService {
     final env = buildEnvironment();
     if (_usesShellRunner || _flutterPath == null) {
       final shell = _shellExecutable();
-      final command = 'flutter ${_shellJoin(args)}';
+      final flutterCmd =
+          _flutterPath != null ? _shellEscape(_flutterPath!) : 'flutter';
+      final command = '$flutterCmd ${_shellJoin(args)}';
       return Process.start(
         shell,
         ['-ilc', command],
@@ -209,32 +227,37 @@ class FlutterSdkService {
     return "'${arg.replaceAll("'", r"'\''")}'";
   }
 
-  /// Maps a user-supplied path to the `flutter` executable. Accepts the SDK
-  /// root, its `bin` directory, or the executable itself.
-  ///
-  /// Under App Sandbox, [FileSystemEntity.typeSync] often returns "not a file"
-  /// for paths the user just granted via the open panel, so candidates are also
-  /// verified by running `flutter --version`.
-  Future<String?> _resolveBinary(String path) async {
+  /// Resolves a panel selection to the SDK root directory.
+  Future<String?> _normalizeSelection(String path) async {
     final trimmed = path.trim();
     if (trimmed.isEmpty) return null;
 
     final exe = Platform.isWindows ? 'flutter.bat' : 'flutter';
-    final candidates = [
-      trimmed,
-      p.join(trimmed, exe),
-      p.join(trimmed, 'bin', exe),
-    ];
 
-    for (final candidate in candidates) {
-      if (_isFile(candidate)) {
-        return candidate;
-      }
-      if (await _readVersion(candidate) != null) {
-        return candidate;
-      }
+    if (p.basename(trimmed) == exe && _isFile(trimmed)) {
+      return _sdkRootFor(trimmed);
     }
+
+    if (p.basename(trimmed) == 'bin') {
+      final binary = p.join(trimmed, exe);
+      final root = p.dirname(trimmed);
+      if (await _looksLikeSdkRoot(root, binary)) return root;
+    }
+
+    final atRoot = p.join(trimmed, 'bin', exe);
+    if (await _looksLikeSdkRoot(trimmed, atRoot)) return trimmed;
+
+    // Homebrew Caskroom: user often picks the version folder (…/3.29.0).
+    final nestedRoot = p.join(trimmed, 'flutter');
+    final atNested = p.join(nestedRoot, 'bin', exe);
+    if (await _looksLikeSdkRoot(nestedRoot, atNested)) return nestedRoot;
+
     return null;
+  }
+
+  Future<bool> _looksLikeSdkRoot(String sdkRoot, String binary) async {
+    if (_isFile(binary)) return true;
+    return await _readVersionAt(binary, sdkRoot) != null;
   }
 
   bool _isFile(String path) {
@@ -265,21 +288,22 @@ class FlutterSdkService {
   }
 
   Future<bool> _adopt(String binary, {required bool isManual}) async {
-    final version = await _readVersion(binary);
-    if (version == null) {
-      final shellVersion = await _readVersionViaShell();
-      if (shellVersion == null) return false;
-      return _adoptFromProbe(
-        _FlutterProbe(binary: binary, version: shellVersion),
-        isManual: isManual,
-      );
-    }
+    final sdkRoot = _sdkRootFor(binary);
+    if (sdkRoot == null) return false;
+
+    final version = await _readVersionAt(binary, sdkRoot);
+    if (version == null) return false;
+
+    final directVersion = await _readVersionWithEnv(
+      binary,
+      _envForSdk(sdkRoot, binary),
+    );
 
     _flutterPath = binary;
     _flutterVersion = version;
-    _sdkRoot = _sdkRootFor(binary);
+    _sdkRoot = sdkRoot;
     _isManual = isManual;
-    _usesShellRunner = false;
+    _usesShellRunner = directVersion == null;
     return true;
   }
 
@@ -297,11 +321,29 @@ class FlutterSdkService {
   }
 
   Future<String?> _readVersion(String binary) async {
+    final sdkRoot = _sdkRootFor(binary);
+    if (sdkRoot == null) return null;
+    return _readVersionAt(binary, sdkRoot);
+  }
+
+  Future<String?> _readVersionAt(String binary, String sdkRoot) async {
+    final direct = await _readVersionWithEnv(
+      binary,
+      _envForSdk(sdkRoot, binary),
+    );
+    if (direct != null) return direct;
+    return _readVersionViaShellAt(binary, sdkRoot);
+  }
+
+  Future<String?> _readVersionWithEnv(
+    String binary,
+    Map<String, String> environment,
+  ) async {
     try {
       final result = await Process.run(
         binary,
         ['--version'],
-        environment: buildEnvironment(),
+        environment: environment,
         runInShell: false,
       ).timeout(_lookupTimeout);
 
@@ -312,14 +354,25 @@ class FlutterSdkService {
     }
   }
 
-  Future<String?> _readVersionViaShell() async {
+  Map<String, String> _envForSdk(String sdkRoot, String binary) {
+    final env = buildEnvironment();
+    env['FLUTTER_ROOT'] = sdkRoot;
+    final binDir = p.dirname(binary);
+    env['PATH'] = '$binDir:${env['PATH']}';
+    return env;
+  }
+
+  Future<String?> _readVersionViaShellAt(String binary, String sdkRoot) async {
     if (Platform.isWindows) return null;
 
     try {
       final result = await Process.run(
         _shellExecutable(),
-        ['-ilc', 'flutter --version 2>/dev/null | head -n 1'],
-        environment: buildEnvironment(),
+        [
+          '-ilc',
+          '${_shellEscape(binary)} --version 2>/dev/null | head -n 1',
+        ],
+        environment: _envForSdk(sdkRoot, binary),
         runInShell: false,
       ).timeout(_lookupTimeout);
 
@@ -335,8 +388,12 @@ class FlutterSdkService {
   Future<String?> _savedPath() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final root = prefs.getString('${_prefsKey}_root');
+      if (root != null && root.isNotEmpty) return root;
+
       final saved = prefs.getString(_prefsKey);
-      return (saved == null || saved.isEmpty) ? null : saved;
+      if (saved == null || saved.isEmpty) return null;
+      return _sdkRootFor(saved) ?? saved;
     } catch (_) {
       return null;
     }

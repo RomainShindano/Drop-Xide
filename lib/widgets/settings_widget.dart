@@ -346,8 +346,10 @@ class SettingsWidget extends StatelessWidget {
         ),
         message: Text(
           'No Flutter SDK was found at:\n$path\n\n'
-          'Choose the folder that contains bin/flutter — usually named '
-          '"flutter".',
+          'For Homebrew, open /opt/homebrew/Caskroom/flutter and choose either:\n'
+          '  • the version folder (e.g. 3.29.0), or\n'
+          '  • the "flutter" folder inside it (contains bin/flutter).\n\n'
+          'For a manual install, choose the top-level "flutter" folder.',
           textAlign: TextAlign.center,
         ),
         primaryButton: PushButton(
