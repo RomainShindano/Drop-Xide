@@ -55,6 +55,13 @@ class MainFlutterWindow: NSWindow {
           self.pickDirectory(
             dialogTitle: args?["dialogTitle"] as? String,
             confirmButtonText: args?["confirmButtonText"] as? String,
+            initialDirectory: args?["initialDirectory"] as? String,
+            result: result
+          )
+        case "pickFlutterSdk":
+          self.pickFlutterSdk(
+            dialogTitle: args?["dialogTitle"] as? String,
+            confirmButtonText: args?["confirmButtonText"] as? String,
             result: result
           )
         case "pickFile":
@@ -76,6 +83,7 @@ class MainFlutterWindow: NSWindow {
   private func pickDirectory(
     dialogTitle: String?,
     confirmButtonText: String?,
+    initialDirectory: String?,
     result: @escaping FlutterResult
   ) {
     let panel = NSOpenPanel()
@@ -85,8 +93,46 @@ class MainFlutterWindow: NSWindow {
     panel.canCreateDirectories = false
     panel.prompt = confirmButtonText ?? "Select"
     panel.message = dialogTitle ?? "Choose a folder"
+    applyInitialDirectory(initialDirectory, to: panel)
 
     present(panel, result: result)
+  }
+
+  /// Opens a panel that accepts either the SDK root directory or the `flutter`
+  /// executable itself. Starts in the Homebrew Caskroom when it exists.
+  private func pickFlutterSdk(
+    dialogTitle: String?,
+    confirmButtonText: String?,
+    result: @escaping FlutterResult
+  ) {
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = true
+    panel.canChooseDirectories = true
+    panel.allowsMultipleSelection = false
+    panel.canCreateDirectories = false
+    panel.prompt = confirmButtonText ?? "Use SDK"
+    panel.message =
+      dialogTitle
+      ?? "Choose your Flutter SDK folder (the one containing bin/flutter), or select the flutter executable."
+    panel.treatsFilePackagesAsDirectories = true
+
+    let homebrewCaskroom = "/opt/homebrew/Caskroom/flutter"
+    let legacyCaskroom = "/usr/local/Caskroom/flutter"
+    if FileManager.default.fileExists(atPath: homebrewCaskroom) {
+      applyInitialDirectory(homebrewCaskroom, to: panel)
+    } else if FileManager.default.fileExists(atPath: legacyCaskroom) {
+      applyInitialDirectory(legacyCaskroom, to: panel)
+    }
+
+    present(panel, result: result)
+  }
+
+  private func applyInitialDirectory(_ path: String?, to panel: NSOpenPanel) {
+    guard let path = path, !path.isEmpty else { return }
+    let url = URL(fileURLWithPath: path, isDirectory: true)
+    if FileManager.default.fileExists(atPath: url.path) {
+      panel.directoryURL = url
+    }
   }
 
   private func pickFile(
@@ -125,15 +171,33 @@ class MainFlutterWindow: NSWindow {
         return
       }
 
-      self?.persistAccess(to: url)
+      if let sdkRoot = self?.sdkRootForFlutterSelection(url) {
+        self?.persistAccess(to: sdkRoot)
+      } else {
+        self?.persistAccess(to: url)
+      }
       result(url.path)
     }
   }
 
+  /// Maps a panel selection to the SDK root directory when possible.
+  private func sdkRootForFlutterSelection(_ url: URL) -> URL? {
+    if url.hasDirectoryPath {
+      return url
+    }
+
+    guard url.lastPathComponent == "flutter" else { return nil }
+    let binDir = url.deletingLastPathComponent()
+    guard binDir.lastPathComponent == "bin" else { return nil }
+    return binDir.deletingLastPathComponent()
+  }
+
   /// Records a security-scoped bookmark so the folder stays reachable after the
-  /// app is relaunched. Without this, App Sandbox grants access only until the
-  /// app quits, and saved project or SDK paths become unreadable.
+  /// app is relaunched. Also starts access for the current process so Dart can
+  /// read the path immediately after the user confirms the panel.
   private func persistAccess(to url: URL) {
+    activateAccess(to: url)
+
     do {
       let data = try url.bookmarkData(
         options: .withSecurityScope,
@@ -147,6 +211,19 @@ class MainFlutterWindow: NSWindow {
       // Bookmarking with security scope is only meaningful for a sandboxed app.
       // An unsandboxed build already has access, so there is nothing to persist.
     }
+  }
+
+  /// Keeps a security-scoped URL alive for the lifetime of the process.
+  private func activateAccess(to url: URL) -> Bool {
+    let alreadyActive = activeScopedURLs.contains { existing in
+      existing.path == url.path
+    }
+    if alreadyActive {
+      return true
+    }
+    guard url.startAccessingSecurityScopedResource() else { return false }
+    activeScopedURLs.append(url)
+    return true
   }
 
   /// Re-acquires access to every previously chosen path. Returns the paths that
@@ -171,15 +248,13 @@ class MainFlutterWindow: NSWindow {
         continue
       }
 
-      if url.startAccessingSecurityScopedResource() {
-        activeScopedURLs.append(url)
-        restored.append(url.path)
+      guard activateAccess(to: url) else { continue }
+      restored.append(url.path)
 
-        if isStale, let refreshed = refreshedBookmark(for: url) {
-          surviving[path] = refreshed
-        } else {
-          surviving[path] = data
-        }
+      if isStale, let refreshed = refreshedBookmark(for: url) {
+        surviving[path] = refreshed
+      } else {
+        surviving[path] = data
       }
     }
 

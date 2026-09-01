@@ -18,7 +18,27 @@ class AppFilePicker {
     return path;
   }
 
-  static Future<String?> pickJsonFile({String? confirmButtonText}) async {
+  static Future<String?> pickFlutterSdk({
+    String? dialogTitle,
+    String? confirmButtonText,
+  }) async {
+    try {
+      final path = await _channel.invokeMethod<String>(
+        'pickFlutterSdk',
+        <String, dynamic>{
+          'dialogTitle': ?dialogTitle,
+          'confirmButtonText': ?confirmButtonText,
+        },
+      );
+      return path;
+    } on MissingPluginException {
+      return pickDirectory(
+        dialogTitle: dialogTitle,
+        confirmButtonText: confirmButtonText,
+      );
+    }
+  }
+
     return pickFile(fileExtension: 'json', confirmButtonText: confirmButtonText);
   }
 
